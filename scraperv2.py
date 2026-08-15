@@ -136,9 +136,23 @@ def processar_categoria(url):
                     preco_elem = container.select_one("p.text-lg.text-neutral-500.font-bold")
                     preco = preco_elem.text.strip() if preco_elem else ""
 
+                    # --- NOVA BUSCA DE IMAGEM ---
+                    imagem_url = ""
+                    if container:
+                        # Tenta pegar a tag img dentro do container do produto
+                        img_elem = container.find("img")
+                        if img_elem:
+                            # Tenta pegar o src normal ou data-src (comum em lazy loading)
+                            src = img_elem.get("src") or img_elem.get("data-src") or ""
+                            if src:
+                                if src.startswith("/"):
+                                    imagem_url = f"https://www.atacadao.com.br{src}"
+                                else:
+                                    imagem_url = src
+
                     if nome and preco:
                         dados.append({
-                            "nome": nome, "preco": preco, "link": link,
+                            "nome": nome, "preco": preco, "link": link, "imagem_url": imagem_url,
                             "categoria": categoria, "subcategoria": subcategoria,
                             "data_extracao": data_extracao
                         })
