@@ -27,10 +27,13 @@ jobs:
           pip install -r requirements.txt
 
       - name: Executar Scraper
-        run: python scraperv2.py  # Substitua pelo nome do seu .py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scraperv2.py
 
-      - name: Salvar os dados gerados no repositório
+      - name: Salvar os dados gerados no repositório (Opcional caso ainda salve algo local)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Teste: salvando dados parquet automaticamente"
+          commit_message: "Teste: salvando dados automaticamente"
           file_pattern: 'data/raw/*'
