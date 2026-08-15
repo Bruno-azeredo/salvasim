@@ -1,0 +1,36 @@
+name: Testar Scraper Local
+
+on:
+  workflow_dispatch: # Permite rodar manualmente clicando no botão
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    # Permissão necessária para o GitHub conseguir dar commit no repositório
+    permissions:
+      contents: write
+
+    steps:
+      - name: Copiar código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Executar Scraper
+        run: python scraperv2.py  # Substitua pelo nome do seu .py
+
+      - name: Salvar os dados gerados no repositório
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Teste: salvando dados parquet automaticamente"
+          file_pattern: 'data/raw/*'
