@@ -288,16 +288,29 @@ def run():
     df_final["vender_como_kit"] = df["vender_como_kit"]
     df_final["quantidade_kit"] = df["quantidade_kit"]
 
-    # Salva o arquivo final processado (ideal para o Streamlit ler direto)
-    os.makedirs("data", exist_ok=True)
-    df_final.to_parquet("data/silver.parquet", index=False)
+    # 1. Conecta ao Supabase
+    supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
 
-    hoje = datetime.today().strftime('%Y-%m-%d')
-    path = f"data/silver/data={hoje}"
-    os.makedirs(path, exist_ok=True)
-    df_final.to_parquet(f"{path}/part-000.parquet", index=False)
+    # 2. Deleta todos os registros da tabela silver_products
+    # Importante: Certifique-se de que a tabela 'silver_products' exista no seu banco
+    supabase.table("silver_products").delete().neq("id", "0").execute()
+
+    df_final["data_extracao"] = df_final["data_extracao"].dt.strftime('%Y-%m-%dT%H:%M:%S')
+    df_final["data_processamento"] = df_final["data_processamento"].dt.strftime('%Y-%m-%dT%H:%M:%S')
+
+    # 3. Insere os novos dados processados
+    # Transformamos o df_final em lista de dicionários para o supabase
+    dados_para_inserir = df_final.where(pd.notnull(df_final), None).to_dict(orient="records")
     
-    print("✅ Processamento concluído e arquivos Parquet gerados com sucesso!")
+    # O Supabase tem limite de insert (geralmente 1000 registros por vez), 
+    # caso sua base seja grande, use um loop ou o método de inserção em lotes.
+# Em vez de apenas supabase.table("...").insert(dados_para_inserir).execute()
+    batch_size = 500
+    for i in range(0, len(dados_para_inserir), batch_size):
+        batch = dados_para_inserir[i:i + batch_size]
+        supabase.table("silver_products").insert(batch).execute()
+
+    print("✅ Tabela 'silver_products' atualizada no Supabase com sucesso!")
 
 if __name__ == "__main__":
     run()

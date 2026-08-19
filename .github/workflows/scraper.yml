@@ -3,14 +3,11 @@ name: Pipeline Completo Atacadão
 on:
   workflow_dispatch: # Permite rodar manualmente
   schedule:
-    - cron: '0 6 * * *' # Opcional: roda todo dia às 06:00 UTC
+    - cron: '0 6 * * *' # Roda todo dia às 06:00 UTC
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
 
     steps:
       - name: Copiar código do repositório
@@ -40,10 +37,7 @@ jobs:
         run: python processing/silver.py
 
       - name: 3. Atualizar Dimensão de Produtos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python processing/dim_products.py
-
-      - name: Salvar dados e dimensões atualizadas no repositório
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "🤖 Atualização automática do pipeline (Scraper, Silver e Dim)"
-          file_pattern: 'data/**'
