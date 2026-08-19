@@ -278,11 +278,20 @@ def run():
 
     # 9. Envio para a tabela `silver_products` via UPSERT
     print("☁️ Enviando dados tratados para a tabela `silver_products` no Supabase...")
-    # Substitui NaN, inf, -inf por None (compatível com JSON/Supabase)
-    df_final = df_final.where(pd.notnull(df_final), None)
-    data_list = df_final.to_dict(orient="records")
-    batch_size = 500
+    
+    # Substitui NaN, inf, -inf por None de forma segura para o JSON do Python
+    df_final = df_final.astype(object).where(pd.notnull(df_final), None)
+    data_list = []
+    
+    for row in df_final.to_dict(orient="records"):
+        # Garante que nenhum float "inf" ou "nan" escape para o dicionário final
+        clean_row = {
+            k: (None if pd.isna(v) or (isinstance(v, float) and (v == float('inf') or v == float('-inf'))) else v)
+            for k, v in row.items()
+        }
+        data_list.append(clean_row)
 
+    batch_size = 500
     for i in range(0, len(data_list), batch_size):
         batch = data_list[i:i+batch_size]
         supabase.table("silver_products").upsert(batch).execute()
