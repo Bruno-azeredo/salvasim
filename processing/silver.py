@@ -172,7 +172,7 @@ def run():
     print("🚀 Iniciando processamento Silver via Supabase...")
 
     # 1. Carregar dados RAW do Supabase (Substitua 'raw_historico' se o nome da sua tabela for diferente)
-    df = fetch_all_from_supabase("raw_historico")
+    df = fetch_all_from_supabase("produtos_atacadao")
 
     if df.empty:
         print("❌ Nenhum registro encontrado na tabela 'raw_historico' do Supabase.")
