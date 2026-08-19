@@ -1,316 +1,235 @@
-import pandas as pd
-import re
-from datetime import datetime
-import hashlib
+import glob
 import os
+from pathlib import Path
+import duckdb
+import pandas as pd
 from supabase import create_client
 
-# =========================
-# CONFIG
-# =========================
+# =====================================================
+# CONFIGURAÇÕES
+# =====================================================
 
-MARGEM_DESEJADA = 0.65
-COMISSAO = 0.18
-CUSTO_EMBALAGEM = 2.00
+RAW_PATH = "data/raw/atacadao/*/data.parquet"
 
-DESCRICAO_PADRAO = (
-    "Produto original de alta qualidade, enviado com segurança e rapidez. "
-    "Todos os itens são novos, bem embalados e prontos para entrega imediata."
+# Caminhos locais caso queira manter backup em parquet
+SILVER_PATH = Path("D:/Projeto/monitor-preco/dashboard-monitor-preco/data/silver")
+GOLD_PATH = Path("D:/Projeto/monitor-preco/dashboard-monitor-preco/data/gold")
+
+SILVER_PATH.mkdir(parents=True, exist_ok=True)
+GOLD_PATH.mkdir(parents=True, exist_ok=True)
+
+# Configuração do Supabase (buscando das variáveis de ambiente / secrets)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "SUA_URL_AQUI")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "SUA_KEY_AQUI")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+# =====================================================
+# BUSCA E VALIDA ARQUIVOS PARQUET
+# =====================================================
+
+arquivos = glob.glob(RAW_PATH)
+
+if not arquivos:
+    raise Exception("Nenhum arquivo parquet encontrado.")
+
+arquivos_validos = []
+print("Validando arquivos parquet...")
+
+for arq in sorted(arquivos):
+    try:
+        if os.path.getsize(arq) < 3000:
+            print(f"Ignorado (arquivo corrompido/pequeno): {arq}")
+            continue
+
+        arq_duck = arq.replace("\\", "/")
+        duckdb.sql(f"SELECT 1 FROM read_parquet('{arq_duck}') LIMIT 1")
+        arquivos_validos.append(arq_duck)
+
+    except Exception as e:
+        print(f"Ignorado erro: {arq} - {e}")
+
+print(f"\nArquivos válidos identificados: {len(arquivos_validos)}")
+
+
+# =====================================================
+# CARREGA DADOS (DUCKDB -> PANDAS)
+# =====================================================
+
+con = duckdb.connect()
+
+historico = con.execute(
+    "SELECT * FROM read_parquet(?)", [arquivos_validos]
+).df()
+
+print(f"Registros carregados: {len(historico):,}")
+
+
+# =====================================================
+# LIMPEZA E TRATAMENTO
+# =====================================================
+
+historico["data_extracao"] = pd.to_datetime(historico["data_extracao"])
+
+# Limpeza e conversão de preço
+historico["preco"] = (
+    historico["preco"]
+    .astype(str)
+    .str.replace("R$", "", regex=False)
+    .str.replace("\xa0", "", regex=False)
+    .str.replace(" ", "", regex=False)
+    .str.replace(".", "", regex=False)
+    .str.replace(",", ".", regex=False)
 )
 
-# =========================
-# CLASSIFICAÇÃO FISCAL
-# =========================
+historico["preco"] = pd.to_numeric(historico["preco"], errors="coerce")
 
-CLASSIFICACAO_FISCAL = {
-    # 🧃 BEBIDAS
-    "aguas": {"NCM": "22011000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "cervejas": {"NCM": "22030000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "champanhes-espumantes-e-sidras": {"NCM": "22041000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "chas-prontos": {"NCM": "22029900", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "coqueteis": {"NCM": "22089000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "destilados": {"NCM": "22089000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "energeticos-e-isotonicos": {"NCM": "22021000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "refrigerantes": {"NCM": "22021000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "sucos-e-refrescos": {"NCM": "20099000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "cafes-chas-e-achocolatados": {"NCM": "09012100","CFOP_MESMO": "5102","CFOP_OUTRO": "6102","Origem": "0","CSOSN": "102","Unidade": "UN"},
-    # 🍫 ALIMENTOS
-    "acucar-e-adocantes": {"NCM": "17019900", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "azeites-oleos-e-vinagres": {"NCM": "15091000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "biscoitos": {"NCM": "19053100", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "bomboniere": {"NCM": "17049010", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "chocolates": {"NCM": "18069000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "confeitaria": {"NCM": "19059090", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "conservas-e-enlatados": {"NCM": "20019000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "doces": {"NCM": "17049010", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "farinhas": {"NCM": "11010010", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "KG"},
-    "graos": {"NCM": "10063021", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "KG"},
-    "massas-e-molhos": {"NCM": "19021100", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "salgadinhos-e-snacks": {"NCM": "19059090", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "sopas-e-cremes": {"NCM": "21041011", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "temperos-e-condimentos": {"NCM": "25010020", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "aveias-e-cereais": {"NCM": "19041000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "KG"},
-    "leites": {"NCM": "04012010", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "L"},
-    "mel-geleias-e-pates": {"NCM": "04090000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "paes-e-torradas": {"NCM": "19059090", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    # 🧽 LIMPEZA
-    "limpeza-de-banheiro": {"NCM": "34022000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "limpeza-de-casa": {"NCM": "34029000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "limpeza-de-cozinha": {"NCM": "34022000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "limpeza-de-roupas": {"NCM": "34022000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    # 🧴 HIGIENE E CUIDADOS PESSOAIS
-    "bebes": {"NCM": "96190000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "cabelo": {"NCM": "33059000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "corpo": {"NCM": "33049990", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "cremes-de-barbear-e-barbeadores": {"NCM": "82121000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "desodorantes": {"NCM": "33072010", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "higiene-bucal": {"NCM": "33069000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "higiene-intima": {"NCM": "96190000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "papel-higienico": {"NCM": "48181000", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "sabonetes": {"NCM": "34011190", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"},
-    "saude": {"NCM": "30049099", "CFOP_MESMO": "5102", "CFOP_OUTRO": "6102", "Origem": "0", "CSOSN": "102", "Unidade": "UN"}
-}
+# Remove registros sem preço e duplicatas no mesmo timestamp
+historico = historico[historico["preco"].notna()]
+historico = historico.drop_duplicates(subset=["link", "data_extracao"])
 
-# =========================
-# FUNÇÕES
-# =========================
 
-def limpar_preco(preco):
-    preco = str(preco).replace("R$", "").replace(",", ".")
-    preco = re.sub(r"[^\d\.]", "", preco)
-    return float(preco) if preco else 0.0
+# =====================================================
+# ORDENAÇÃO E COMPARAÇÃO DE PREÇOS HISTÓRICOS
+# =====================================================
 
-def normalizar_nome(nome):
-    if not nome:
-        return ""
-    nome = str(nome).lower()
-    nome = re.sub(r'[^a-z0-9 ]', '', nome)
-    return nome.strip()
+historico = historico.sort_values(["link", "data_extracao"])
 
-def calcular_preco_venda(custo):
-    if custo <= 0:
-        return 0
+historico["preco_anterior"] = historico.groupby("link")["preco"].shift()
+historico["data_anterior"] = historico.groupby("link")["data_extracao"].shift()
 
-    custo_total = custo + CUSTO_EMBALAGEM
-    taxa = 4.50
-    preco = (custo_total * (1 + MARGEM_DESEJADA) + taxa) / (1 - COMISSAO)
+# Trata comparação de preço e variações
+historico["mudou_preco"] = (
+    (historico["preco"] != historico["preco_anterior"])
+    & (historico["preco_anterior"].notna())
+)
 
-    if preco <= 8:
-        taxa = 2.00
-        preco = (custo_total * (1 + MARGEM_DESEJADA) + taxa) / (1 - COMISSAO)
+historico["variacao_pct"] = (
+    (historico["preco"] - historico["preco_anterior"]) / historico["preco_anterior"]
+) * 100
 
-    return round(preco, 2)
+historico["variacao_pct"] = historico["variacao_pct"].round(2)
 
-def extrair_peso(nome):
-    try:
-        if not nome:
-            return None
-        nome = nome.lower()
-        match = re.search(r'(\d+[.,]?\d*)\s?(kg|g|ml|l)', nome)
-        if not match:
-            return None
 
-        valor = match.group(1).replace(",", ".")
-        unidade = match.group(2)
+# =====================================================
+# MÉTRICAS HISTÓRICAS
+# =====================================================
 
-        if valor == ".":
-            return None
+metricas = (
+    historico.groupby("link")
+    .agg(
+        menor_preco=("preco", "min"),
+        maior_preco=("preco", "max"),
+        preco_medio=("preco", "mean"),
+        total_dias=("preco", "count"),
+        imagem_url=("imagem_url", "first")
+    )
+    .reset_index()
+)
 
-        valor = float(valor)
+monitor = historico.merge(metricas, on="link", how="left")
 
-        if unidade == "kg":
-            return valor
-        elif unidade == "g":
-            return valor / 1000
-        elif unidade == "l":
-            return valor  
-        elif unidade == "ml":
-            return valor / 1000
+monitor["abaixo_media_pct"] = (
+    (monitor["preco"] - monitor["preco_medio"]) / monitor["preco_medio"]
+) * 100
 
-        return None
-    except:
-        return None
+monitor["abaixo_media_pct"] = monitor["abaixo_media_pct"].round(2)
 
-def gerar_id(nome):
-    return hashlib.md5(nome.encode()).hexdigest()
 
-def preencher_classificacao(subcategoria):
-    info = CLASSIFICACAO_FISCAL.get(str(subcategoria).lower(), None)
-    if info:
-        return pd.Series(info)
+# =====================================================
+# FILTRAR O PREÇO MAIS RECENTE POR PRODUTO (SILVER)
+# =====================================================
 
-    return pd.Series({
-        "NCM": "00000000",
-        "CFOP_MESMO": "5102",
-        "CFOP_OUTRO": "6102",
-        "Unidade": "UN"
-    })
+monitor["data_extracao"] = pd.to_datetime(monitor["data_extracao"])
+idx_mais_recente = monitor.groupby("link")["data_extracao"].idxmax()
+silver_final = monitor.loc[idx_mais_recente].copy()
 
-# =========================
-# PIPELINE
-# =========================
 
-def run():
-    print("🚀 Iniciando processamento via Supabase...")
+# =====================================================
+# SNAPSHOT (ÚLTIMA EXTRAÇÃO GERAL POR PRODUTO)
+# =====================================================
 
-    url_db = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    
-    if not url_db or not key:
-        print("❌ Credenciais do Supabase não encontradas nas variáveis de ambiente.")
+ultimas_datas = monitor.groupby("link")["data_extracao"].transform("max")
+snapshot = monitor[monitor["data_extracao"] == ultimas_datas].copy()
+
+ultima_data_geral = monitor["data_extracao"].max()
+
+
+# =====================================================
+# REGRAS DE NEGÓCIO (ALERTAS, OPORTUNIDADES E RANKING)
+# =====================================================
+
+# Alertas com mudança de preço >= 5%
+alertas = snapshot[
+    (snapshot["mudou_preco"]) & (snapshot["variacao_pct"].abs() >= 5)
+].copy()
+
+alertas["tipo"] = alertas["variacao_pct"].apply(
+    lambda x: "queda" if x < 0 else "alta"
+)
+
+# Oportunidades: preço atual no menor preço histórico
+oportunidades = snapshot[snapshot["preco"] == snapshot["menor_preco"]].copy()
+
+# Ranking de Oportunidades
+ranking = snapshot.copy()
+ranking["score"] = (ranking["variacao_pct"] * -1) + (ranking["abaixo_media_pct"] * -1)
+ranking = ranking.sort_values("score", ascending=False).head(100)
+
+
+# =====================================================
+# PERSISTÊNCIA DOS DADOS (LOCAL PARQUET)
+# =====================================================
+
+monitor.to_parquet(SILVER_PATH / "monitor.parquet", index=False)
+snapshot.to_parquet(GOLD_PATH / "snapshot_atual.parquet", index=False)
+alertas.to_parquet(GOLD_PATH / "alertas_diarios.parquet", index=False)
+oportunidades.to_parquet(GOLD_PATH / "oportunidades.parquet", index=False)
+ranking.to_parquet(GOLD_PATH / "ranking_oportunidades.parquet", index=False)
+
+
+# =====================================================
+# PERSISTÊNCIA DOS DADOS (SUPABASE VIA UPSERT)
+# =====================================================
+
+def upload_to_supabase(df, table_name):
+    if df.empty:
+        print(f"Tabela {table_name} vazia, pulando upload.")
         return
-
-    supabase = create_client(url_db, key)
-
-    # 📥 Puxa os dados direto do Supabase
-    response = supabase.table("produtos_atacadao").select("*").execute()
-    dados = response.data
-
-    if not dados:
-        print("❌ Nenhum dado encontrado na tabela do Supabase")
-        return
-
-    df = pd.DataFrame(dados)
-    print(f"📊 Registros obtidos do Supabase: {len(df)}")
-
-    # =========================
-    # TRATAMENTO
-    # =========================
-
-    df["preco_custo"] = df["preco"].apply(limpar_preco)
-    df["nome_normalizado"] = df["nome"].apply(normalizar_nome)
-    df["data_extracao"] = pd.to_datetime(df["data_extracao"])
-    df["imagem_url"] = df["imagem_url"].fillna("")
-
-    # =========================
-    # CARREGAR DIM E MERGE
-    # =========================
-
-    dim_path = "data/dim/products.parquet"
-    if os.path.exists(dim_path):
-        df_dim = pd.read_parquet(dim_path)
-        df_dim["nome_normalizado"] = df_dim["nome_produto"].apply(normalizar_nome)
-
-        df = df.merge(
-            df_dim[["nome_normalizado", "descricao", "vender_como_kit", "quantidade_kit"]],
-            on="nome_normalizado",
-            how="left"
-        )
-        print("🔗 Merge com DIM realizado")
-    else:
-        print("⚠️ Arquivo de dimensão não encontrado. Prosseguindo sem ele.")
-        df["descricao"] = None
-        df["vender_como_kit"] = False
-        df["quantidade_kit"] = 1
-
-    df["vender_como_kit"] = df["vender_como_kit"].fillna(False)
-    df["quantidade_kit"] = df["quantidade_kit"].fillna(1).astype(int)
-
-    # =========================
-    # MENOR PREÇO HISTÓRICO
-    # =========================
-
-    df_historico = df.copy()
-    menor = (
-        df_historico
-        .groupby("nome_normalizado")["preco_custo"]
-        .min()
-        .reset_index()
-    )
-    menor.rename(columns={"preco_custo": "MENOR_PRECO"}, inplace=True)
-
-    # =========================
-    # SOMENTE ÚLTIMA EXTRAÇÃO
-    # =========================
-
-    ultima_data = df_historico["data_extracao"].max()
-    print(f"📅 Última extração encontrada: {ultima_data}")
-
-    df = df_historico[df_historico["data_extracao"] == ultima_data].copy()
-    print(f"📦 Produtos na última extração: {len(df)}")
-
-    # =========================
-    # ADICIONAR MENOR PREÇO
-    # =========================
-
-    df = df.merge(menor, on="nome_normalizado", how="left")
-
-    # =========================
-    # ENRIQUECIMENTO E KITS
-    # =========================
-
-    df["preco_custo"] = df["preco_custo"] * df["quantidade_kit"]
-    df["nome_original"] = df["nome"]
-
-    df["nome_anuncio"] = df.apply(
-        lambda row: f"KIT COM {row['quantidade_kit']} UNIDADES - {row['nome_original']}"
-        if row["vender_como_kit"] else row["nome_original"],
-        axis=1
-    )
-
-    df["preco_venda"] = df["preco_custo"].apply(calcular_preco_venda)
-    df["peso"] = df["nome_original"].apply(extrair_peso)
-    df["peso"] = df["peso"] * df["quantidade_kit"]
-    df["descricao"] = df["descricao"].fillna(DESCRICAO_PADRAO)
-
-    df["descricao"] = df.apply(
-        lambda row: f"KIT COM {row['quantidade_kit']} UNIDADES.\n\n{row['descricao']}"
-        if row["vender_como_kit"] else row["descricao"],
-        axis=1
-    )
-
-    classificacao = df["subcategoria"].apply(preencher_classificacao)
-    df = pd.concat([df, classificacao], axis=1)
-
-    # =========================
-    # FINAL
-    # =========================
-
-    df_final = pd.DataFrame()
-    df_final["id"] = df["nome_normalizado"].apply(gerar_id)
-    df_final["nome_original"] = df["nome_original"]
-    df_final["nome_produto"] = df["nome_anuncio"]
-    df_final["descricao"] = df["descricao"]
-    df_final["preco_custo"] = df["preco_custo"]
-    df_final["preco_venda"] = df["preco_venda"]
-    df_final["peso"] = df["peso"]
-    df_final["categoria"] = df.get("categoria")
-    df_final["subcategoria"] = df.get("subcategoria")
-    df_final["link"] = df["link"]
-    df_final["imagem"] = df["imagem_url"]
-    df_final["ncm"] = df["NCM"]
-    df_final["cfop_mesmo"] = df["CFOP_MESMO"]
-    df_final["cfop_outro"] = df["CFOP_OUTRO"]
-    df_final["unidade"] = df["Unidade"]
-    df_final["data_extracao"] = df["data_extracao"]
-    df_final["data_processamento"] = datetime.now()
-    df_final["menor_preco"] = df["MENOR_PRECO"]
-    df_final["vender_como_kit"] = df["vender_como_kit"]
-    df_final["quantidade_kit"] = df["quantidade_kit"]
-
-    # 1. Conecta ao Supabase
-    supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
-
-    # 2. Deleta todos os registros da tabela silver_products
-    # Importante: Certifique-se de que a tabela 'silver_products' exista no seu banco
-    supabase.table("silver_products").delete().neq("id", "0").execute()
-
-    df_final["data_extracao"] = df_final["data_extracao"].dt.strftime('%Y-%m-%dT%H:%M:%S')
-    df_final["data_processamento"] = df_final["data_processamento"].dt.strftime('%Y-%m-%dT%H:%M:%S')
-
-    # 3. Insere os novos dados processados
-    # Transformamos o df_final em lista de dicionários para o supabase
-    dados_para_inserir = df_final.where(pd.notnull(df_final), None).to_dict(orient="records")
     
-    # O Supabase tem limite de insert (geralmente 1000 registros por vez), 
-    # caso sua base seja grande, use um loop ou o método de inserção em lotes.
-# Em vez de apenas supabase.table("...").insert(dados_para_inserir).execute()
+    df_clean = df.copy()
+    # Converte colunas datetime para string para evitar erros no JSON da API
+    for col in df_clean.select_dtypes(include=['datetime64', 'datetime']):
+        df_clean[col] = df_clean[col].astype(str)
+    
+    data_list = df_clean.to_dict(orient="records")
     batch_size = 500
-    for i in range(0, len(dados_para_inserir), batch_size):
-        batch = dados_para_inserir[i:i + batch_size]
-        supabase.table("silver_products").insert(batch).execute()
+    
+    for i in range(0, len(data_list), batch_size):
+        batch = data_list[i:i+batch_size]
+        supabase.table(table_name).upsert(batch).execute()
+        
+    print(f"-> Sucesso ao enviar {len(data_list)} registros para a tabela: {table_name}")
 
-    print("✅ Tabela 'silver_products' atualizada no Supabase com sucesso!")
+print("\nEnviando dados para o Supabase...")
+upload_to_supabase(silver_final, "silver_products")
+upload_to_supabase(snapshot, "gold_snapshot")
+upload_to_supabase(alertas, "gold_alertas")
+upload_to_supabase(oportunidades, "gold_oportunidades")
+upload_to_supabase(ranking, "gold_ranking")
 
-if __name__ == "__main__":
-    run()
+
+# =====================================================
+# RESUMO
+# =====================================================
+
+print("\n==============================")
+print("MONITOR FINALIZADO COM SUCESSO")
+print("==============================")
+print(f"Produtos únicos na Silver: {silver_final['link'].nunique():,}")
+print(f"Registros totais no histórico processado: {len(monitor):,}")
+print(f"Última data detectada: {ultima_data_geral}")
+print(f"Alertas gerados hoje: {len(alertas):,}")
+print(f"Oportunidades ativas: {len(oportunidades):,}")
+print(f"Ranking gerado: {len(ranking):,}")
+print("==============================")
