@@ -278,6 +278,8 @@ def run():
 
     # 9. Envio para a tabela `silver_products` via UPSERT
     print("☁️ Enviando dados tratados para a tabela `silver_products` no Supabase...")
+    # Substitui NaN, inf, -inf por None (compatível com JSON/Supabase)
+    df_final = df_final.where(pd.notnull(df_final), None)
     data_list = df_final.to_dict(orient="records")
     batch_size = 500
 
