@@ -44,7 +44,7 @@ def definir_kit(preco):
 # PIPELINE
 # =========================
 def run():
-    print("🚀 Atualizando dimensão de produtos no Supabase com base no Parquet...")
+    print("🚀 Atualizando dimensão de produtos no Supabase...")
 
     url_db = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
@@ -55,16 +55,7 @@ def run():
 
     supabase = create_client(url_db, key)
 
-    # 1. Lê o arquivo products.parquet local para pegar as descrições personalizadas
-    parquet_path = "products.parquet"
-    if os.path.exists(parquet_path):
-        df_parquet = pd.read_parquet(parquet_path)
-        print(f"📁 Arquivo '{parquet_path}' carregado com sucesso. Registros: {len(df_parquet)}")
-    else:
-        print(f"⚠️ Arquivo '{parquet_path}' não encontrado. Prosseguindo sem descrições locais.")
-        df_parquet = pd.DataFrame(columns=["id", "descricao"])
-
-    # 2. Lê a camada silver diretamente do Supabase
+    # 1. Lê a camada silver diretamente do Supabase
     print("📥 Buscando dados da tabela `silver_products` no Supabase...")
     df_silver = fetch_all_from_supabase(supabase, "silver_products")
 
@@ -77,18 +68,7 @@ def run():
         ["id", "nome_produto", "preco_custo"]
     ].drop_duplicates("id").copy()
 
-    # 3. Faz o merge com o DataFrame do parquet para trazer a descrição (por 'id')
-    if not df_parquet.empty and "id" in df_parquet.columns and "descricao" in df_parquet.columns:
-        # Garante que pegamos apenas id e descricao do parquet para evitar conflitos de colunas
-        df_desc = df_parquet[["id", "descricao"]].drop_duplicates("id")
-        df_unique = df_unique.merge(df_desc, on="id", how="left")
-    else:
-        df_unique["descricao"] = None
-
-    # Preenche descrições nulas com None
-    df_unique["descricao"] = df_unique["descricao"].where(pd.notnull(df_unique["descricao"]), None)
-
-    # 4. Busca a dimensão atual diretamente do Supabase
+    # 2. Busca a dimensão atual diretamente do Supabase
     df_base = fetch_all_from_supabase(supabase, "dim_products")
 
     if not df_base.empty:
@@ -101,38 +81,33 @@ def run():
     registros_para_salvar = []
     data_atual = datetime.now().isoformat()
 
-    # 5. Processa cada produto (novos e atualização de descrição para existentes)
-    for _, row in df_unique.iterrows():
-        prod_id = row["id"]
-        nome_prod = row["nome_produto"]
-        preco = row["preco_custo"]
-        desc_parquet = row["descricao"]
+    # 3. Processa apenas os produtos novos
+    novos = df_unique[~df_unique["id"].isin(ids_existentes)].copy()
+    print(f"🆕 Novos produtos encontrados: {len(novos)}")
 
-        if prod_id not in ids_existentes:
-            # Produto Novo: define kit e usa a descrição do parquet (se houver)
-            kit_info = definir_kit(preco)
+    if len(novos) > 0:
+        novos["descricao"] = None
+        novos["refrigerado"] = False
+
+        # Define o kit para os novos produtos
+        kit_info = novos["preco_custo"].apply(definir_kit)
+        novos["vender_como_kit"] = kit_info["vender_como_kit"]
+        novos["quantidade_kit"] = kit_info["quantidade_kit"]
+
+        for _, row in novos.iterrows():
             registro = {
-                "id": prod_id,
-                "nome_produto": nome_prod,
-                "descricao": desc_parquet,
-                "refrigerado": False,
-                "vender_como_kit": kit_info["vender_como_kit"],
-                "quantidade_kit": kit_info["quantidade_kit"],
+                "id": row["id"],
+                "nome_produto": row["nome_produto"],
+                "descricao": row["descricao"],
+                "refrigerado": row["refrigerado"],
+                "vender_como_kit": row["vender_como_kit"],
+                "quantidade_kit": row["quantidade_kit"],
                 "data_criacao": data_atual,
                 "data_atualizacao": None
             }
-        else:
-            # Produto já existe: se o parquet tiver uma descrição cadastrada, podemos atualizar
-            registro = {
-                "id": prod_id,
-                "nome_produto": nome_prod,
-                "descricao": desc_parquet if desc_parquet else None,
-                "data_atualizacao": data_atual
-            }
-        
-        registros_para_salvar.append(registro)
+            registros_para_salvar.append(registro)
 
-    # 6. Limpeza estrita de tipos e envio via UPSERT para o Supabase
+    # 4. Limpeza estrita de tipos e envio via UPSERT para o Supabase
     if len(registros_para_salvar) > 0:
         dados_limpos = []
         for reg in registros_para_salvar:
@@ -151,9 +126,9 @@ def run():
             batch = dados_limpos[i:i+batch_size]
             supabase.table("dim_products").upsert(batch).execute()
             
-        print(f"✅ {len(dados_limpos)} produtos sincronizados/atualizados com sucesso no Supabase!")
+        print(f"✅ {len(dados_limpos)} novos produtos salvos no Supabase!")
     else:
-        print("ℹ️ Nenhum produto para atualizar.")
+        print("ℹ️ Nenhum produto novo para adicionar à dimensão.")
 
     # =========================
     # LOGS FINAIS
