@@ -138,6 +138,7 @@ def run():
 
     # 3. Merge
     df_final = df_ids.merge(df_silver, left_on="Nome do Produto", right_on="Nome Original", how="left")
+    print(f"🔗 Merge concluído! Total de produtos para processar: {len(df_final)}", flush=True)
     
     # 4. Execução Concorrente
     token = pegar_token()
