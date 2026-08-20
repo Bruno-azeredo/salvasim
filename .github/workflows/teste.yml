@@ -37,7 +37,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python dim.py
+        run: python processing/dim_products.py
 
       # Passo 3: A silver roda de novo, agora lendo a dimensão, e aplica os nomes/preços finais
       - name: 3. Executar Silver Definitiva (Enriquecimento)
