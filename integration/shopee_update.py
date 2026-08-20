@@ -145,7 +145,7 @@ def run():
     print(f"Quantos preços válidos encontrados: {df_final['Preco'].notna().sum()}", flush=True)
     # 4. Execução Concorrente
     token = pegar_token()
-    with ThreadPoolExecutor(max_workers=3) as executor: # Seguro para rate limit
+    with ThreadPoolExecutor(max_workers=10) as executor: # Seguro para rate limit
         futures = [executor.submit(processar_produto, row, token) for _, row in df_final.iterrows()]
         for future in as_completed(futures):
             future.result()
