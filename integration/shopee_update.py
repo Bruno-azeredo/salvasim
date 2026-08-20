@@ -104,12 +104,12 @@ def processar_produto(row, access_token):
 def run():
     print("🚀 Iniciando sincronização...")
     
-    # 1. Carregar Dados direto do Supabase (Tabela produtos_atacadao)
+    # 1. Carregar Dados direto do Supabase (Tabela silver_products)
     try:
-        response = supabase.table("produtos_atacadao").select("*").execute()
+        response = supabase.table("silver_products").select("*").execute()
         df_silver = pd.DataFrame(response.data)
         if df_silver.empty:
-            print("⚠️ A tabela produtos_atacadao está vazia no Supabase.")
+            print("⚠️ A tabela silver_products está vazia no Supabase.")
             return
     except Exception as e:
         print(f"❌ Erro ao buscar dados do Supabase: {e}")
@@ -119,16 +119,23 @@ def run():
     df_ids = pd.read_csv(CSV_PATH)
     df_ids.columns = df_ids.columns.str.strip().str.replace('\ufeff', '')
 
-    # 2. Preparar Silver
-    df_silver = df_silver.rename(columns={
+    # 2. Mapeamento exato com base nas colunas reais da sua imagem
+    mapa_renomeacao = {
         "nome_original": "Nome Original",
         "nome_produto": "Nome do Produto Novo",
         "preco_venda": "Preco",
         "descricao": "Descricao",
-        "imagem_url": "Imagem",
+        "Imagem": "Imagem",
         "peso": "Peso"
-    })
+    }
     
+    df_silver = df_silver.rename(columns=mapa_renomeacao)
+
+    # Verifica se a coluna "Nome Original" existe antes de prosseguir
+    if "Nome Original" not in df_silver.columns:
+        print(f"❌ A coluna 'Nome Original' não foi encontrada. Colunas disponíveis: {list(df_silver.columns)}")
+        return
+
     # 3. Merge
     df_final = df_ids.merge(df_silver, left_on="Nome do Produto", right_on="Nome Original", how="left")
     
