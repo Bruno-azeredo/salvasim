@@ -1,8 +1,10 @@
-import pandas as pd
+import os
 import time
 import hashlib
 import hmac
 import requests
+import pandas as pd
+from supabase import create_client
 from auth import pegar_token
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -13,7 +15,11 @@ PARTNER_ID = 2014045
 PARTNER_KEY = "shpk55617356626c5347767977714e586e4c4f557075544e546e42784a757967"
 SHOP_ID = 1588032704
 CSV_PATH = "produtos_shopee.csv"
-SILVER_PATH = "data/silver.parquet"
+
+# Conexão com o Supabase usando as variáveis de ambiente
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ============================
 # UTILS
@@ -98,8 +104,18 @@ def processar_produto(row, access_token):
 def run():
     print("🚀 Iniciando sincronização...")
     
-    # 1. Carregar Dados
-    df_silver = pd.read_parquet(SILVER_PATH)
+    # 1. Carregar Dados direto do Supabase (Tabela produtos_atacadao)
+    try:
+        response = supabase.table("produtos_atacadao").select("*").execute()
+        df_silver = pd.DataFrame(response.data)
+        if df_silver.empty:
+            print("⚠️ A tabela produtos_atacadao está vazia no Supabase.")
+            return
+    except Exception as e:
+        print(f"❌ Erro ao buscar dados do Supabase: {e}")
+        raise e
+
+    # Carregar IDs do CSV local
     df_ids = pd.read_csv(CSV_PATH)
     df_ids.columns = df_ids.columns.str.strip().str.replace('\ufeff', '')
 
