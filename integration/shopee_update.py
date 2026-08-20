@@ -138,8 +138,11 @@ def run():
 
     # 3. Merge
     df_final = df_ids.merge(df_silver, left_on="Nome do Produto", right_on="Nome Original", how="left")
-    print(f"🔗 Merge concluído! Total de produtos para processar: {len(df_final)}", flush=True)
     
+    # ADICIONE ESTE PRINT PARA VERIFICAR OS DADOS
+    print(df_final[["Nome do Produto", "Preco"]].head(10), flush=True)
+    print(f"Total de linhas no df_final: {len(df_final)}", flush=True)
+    print(f"Quantos preços válidos encontrados: {df_final['Preco'].notna().sum()}", flush=True)
     # 4. Execução Concorrente
     token = pegar_token()
     with ThreadPoolExecutor(max_workers=3) as executor: # Seguro para rate limit
