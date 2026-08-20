@@ -83,8 +83,8 @@ def load_data():
         data["alertas"] = pd.DataFrame()
 
     try:
-        # Busca o Monitor Histórico (Silver)
-        res_monitor = supabase.table("silver_products").select("*").execute()
+        # Busca o Monitor Histórico direto da tabela produtos_atacadao
+        res_monitor = supabase.table("produtos_atacadao").select("*").execute()
         data["monitor"] = pd.DataFrame(res_monitor.data)
     except Exception:
         data["monitor"] = pd.DataFrame()
