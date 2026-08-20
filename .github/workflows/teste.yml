@@ -30,7 +30,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python silver.py
+        run: python processing/silver.py
 
       # Passo 2: A dimensão lê a silver, acha os IDs novos e define quem vira KIT
       - name: 2. Executar Dimensão (Definição de Kits)
