@@ -49,11 +49,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python processing/enrich_products.py
 
-      - name: Executar Sincronização (Shopee)
+      - name: Run Shopee Update
         env:
-          SHOPEE_PARTNER_ID: ${{ secrets.SHOPEE_PARTNER_ID }}
-          SHOPEE_PARTNER_KEY: ${{ secrets.SHOPEE_PARTNER_KEY }}
-          SHOPEE_SHOP_ID: ${{ secrets.SHOPEE_SHOP_ID }}
-          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
-          SHOPEE_REFRESH_TOKEN: ${{ secrets.SHOPEE_REFRESH_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python integration/shopee_update.py
