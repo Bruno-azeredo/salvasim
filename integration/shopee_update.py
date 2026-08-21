@@ -109,7 +109,7 @@ def testar_por_nome(nome_busca):
         item_id, 
         dados['nome_produto'], 
         dados['descricao'], 
-        dados['Imagem'], 
+        dados['imagem'], 
         dados['peso'], 
         token
     )
