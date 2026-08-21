@@ -132,21 +132,20 @@ def run():
     
     df_silver = df_silver.rename(columns=mapa_renomeacao)
 
-    # 3. NORMALIZAÇÃO PARA GARANTIR O MERGE CORRETO
-    # Criamos uma função de limpeza para padronizar os títulos de ambos os lados
+    # 3. Normalização simples para garantir que minúsculas/espaços batam
     def limpar_para_merge(texto):
         if not isinstance(texto, str):
             return ""
-        # Remove acentos, pontuações, deixa minúsculo e tira espaços extras
+        # Remove acentos, pontuações, espaços extras e deixa minúsculo
         texto = texto.lower().strip()
         texto = re.sub(r'[^a-z0-9]', '', texto)
         return texto
 
-    # Aplica a chave normalizada no CSV e na Silver
+    # Aplica a chave no CSV da Shopee e na coluna correta da Silver (nome_produto / Nome do Produto Novo)
     df_ids["key_merge"] = df_ids["Nome do Produto"].apply(limpar_para_merge)
     df_silver["key_merge"] = df_silver["Nome do Produto Novo"].apply(limpar_para_merge)
 
-    # 4. Merge usando a chave limpa
+    # 4. Merge usando a coluna 'nome_produto' da Silver que já tem o título completo com o kit
     df_final = df_ids.merge(df_silver, on="key_merge", how="left")
     
     # ADICIONE ESTE PRINT PARA VERIFICAR OS DADOS
