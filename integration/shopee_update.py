@@ -2,6 +2,7 @@ import os
 import time
 import hashlib
 import hmac
+import re
 import requests
 import pandas as pd
 from supabase import create_client
@@ -90,16 +91,13 @@ def processar_produto(row, access_token):
     item_id = int(row["ID do Produto"])
     preco = row["Preco"]
     
-    if pd.notna(preco):
-        set_status_item(item_id, False, access_token)
-        atualizar_preco(item_id, preco, access_token)
-        atualizar_item_completo(
-            item_id, row["Nome do Produto Novo"], row["Descricao"], 
-            row["Imagem"], row["Peso"], access_token
-        )
-    else:
-        set_status_item(item_id, True, access_token)
-        print(f"❌ Inativado: {item_id}")
+    # Como usamos Inner Join, garantimos que apenas itens válidos chegam aqui
+    set_status_item(item_id, False, access_token)
+    atualizar_preco(item_id, preco, access_token)
+    atualizar_item_completo(
+        item_id, row["Nome do Produto Novo"], row["Descricao"], 
+        row["Imagem"], row["Peso"], access_token
+    )
 
 def run():
     print("🚀 Iniciando sincronização...")
@@ -132,11 +130,9 @@ def run():
     df_silver = df_silver.rename(columns=mapa_renomeacao)
 
     # 3. NORMALIZAÇÃO PARA GARANTIR O MERGE CORRETO
-    # Criamos uma função de limpeza para padronizar os títulos de ambos os lados
     def limpar_para_merge(texto):
         if not isinstance(texto, str):
             return ""
-        # Remove acentos, pontuações, deixa minúsculo e tira espaços extras
         texto = texto.lower().strip()
         texto = re.sub(r'[^a-z0-9]', '', texto)
         return texto
@@ -145,16 +141,18 @@ def run():
     df_ids["key_merge"] = df_ids["Nome do Produto"].apply(limpar_para_merge)
     df_silver["key_merge"] = df_silver["Nome do Produto Novo"].apply(limpar_para_merge)
 
-    # 4. Merge usando a chave limpa
-    df_final = df_ids.merge(df_silver, on="key_merge", how="left")
+    # 4. Merge usando INNER JOIN para processar estritamente o que der match correto
+    df_final = pd.merge(df_ids, df_silver, on="key_merge", how="inner")
     
-    # ADICIONE ESTE PRINT PARA VERIFICAR OS DADOS
-    print(df_final[["Nome do Produto", "Preco"]].head(10), flush=True)
-    print(f"Total de linhas no df_final: {len(df_final)}", flush=True)
-    print(f"Quantos preços válidos encontrados: {df_final['Preco'].notna().sum()}", flush=True)
-    # 4. Execução Concorrente
+    print(f"Total de linhas no df_final (Correspondências exatas): {len(df_final)}", flush=True)
+    
+    if df_final.empty:
+        print("⚠️ Nenhuma correspondência encontrada entre o CSV e a Silver. Verifique os nomes.")
+        return
+
+    # 5. Execução Concorrente
     token = pegar_token()
-    with ThreadPoolExecutor(max_workers=10) as executor: # Seguro para rate limit
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(processar_produto, row, token) for _, row in df_final.iterrows()]
         for future in as_completed(futures):
             future.result()
