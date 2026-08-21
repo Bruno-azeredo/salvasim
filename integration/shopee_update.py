@@ -132,12 +132,12 @@ def run():
     df_silver = df_silver.rename(columns=mapa_renomeacao)
 
     # Verifica se a coluna "Nome Original" existe antes de prosseguir
-    if "Nome Original" not in df_silver.columns:
+    if "Nome do Produto Novo" not in df_silver.columns:
         print(f"❌ A coluna 'Nome Original' não foi encontrada. Colunas disponíveis: {list(df_silver.columns)}")
         return
 
     # 3. Merge
-    df_final = df_ids.merge(df_silver, left_on="Nome do Produto", right_on="Nome Original", how="left")
+    df_final = df_ids.merge(df_silver, left_on="Nome do Produto", right_on="Nome do Produto Novo", how="left")
     
     # ADICIONE ESTE PRINT PARA VERIFICAR OS DADOS
     print(df_final[["Nome do Produto", "Preco"]].head(10), flush=True)
