@@ -21,7 +21,11 @@ def request_com_retry(url, payload, tentativas=3):
     for i in range(tentativas):
         try:
             r = requests.post(url, json=payload, timeout=30)
+            print(f"RESPOSTA DA SHOPEE: {r.text}") # <--- ADICIONE ESTE PRINT
             if r.status_code == 200:
+                res_json = r.json()
+                if res_json.get("error"):
+                    print(f"⚠️ Erro retornado pela API da Shopee: {res_json}")
                 return r
             time.sleep(1)
         except Exception as e:
