@@ -186,18 +186,21 @@ def run():
     df["data_extracao"] = pd.to_datetime(df["data_extracao"])
     df["imagem_url"] = df["imagem_url"].fillna("")
 
-    # 3. Carregar Dimensão de Produtos do Supabase (Substitua 'dim_products' se necessário)
+    # 3. Carregar Dimensão de Produtos do Supabase usando o ID como chave
     try:
         df_dim = fetch_all_from_supabase("dim_products")
     except Exception as e:
         print(f"⚠️ Aviso ao buscar dimensão: {e}. Prosseguindo sem ela.")
         df_dim = pd.DataFrame()
 
-    if not df_dim.empty and "nome_produto" in df_dim.columns:
-        df_dim["nome_normalizado"] = df_dim["nome_produto"].apply(normalizar_nome)
-        cols_to_merge = [c for c in ["nome_normalizado", "descricao", "vender_como_kit", "quantidade_kit"] if c in df_dim.columns]
-        df = df.merge(df_dim[cols_to_merge], on="nome_normalizado", how="left")
-        print("🔗 Merge com DIM realizado com sucesso.")
+    # Gera o ID na base atual para poder cruzar com a dimensão
+    df["id"] = df["nome_normalizado"].apply(gerar_id)
+
+    if not df_dim.empty and "id" in df_dim.columns:
+        # Pega apenas as colunas úteis da dimensão
+        cols_to_merge = [c for c in ["id", "descricao", "vender_como_kit", "quantidade_kit"] if c in df_dim.columns]
+        df = df.merge(df_dim[cols_to_merge], on="id", how="left")
+        print("🔗 Merge com DIM via ID realizado com sucesso.")
     else:
         df["descricao"] = None
         df["vender_como_kit"] = False
