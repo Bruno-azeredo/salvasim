@@ -119,10 +119,10 @@ def run():
     df_ids = pd.read_csv(CSV_PATH)
     df_ids.columns = df_ids.columns.str.strip().str.replace('\ufeff', '')
 
-    # 2. Mapeamento exato com base nas colunas reais da sua imagem
+    # 2. Mapeamento das colunas que vêm do Supabase (silver_products)
     mapa_renomeacao = {
         "nome_original": "Nome Original",
-        "nome_produto": "Nome do Produto Novo",
+        "nome_produto": "Nome do Produto Novo",  
         "preco_venda": "Preco",
         "descricao": "Descricao",
         "Imagem": "Imagem",
@@ -131,13 +131,22 @@ def run():
     
     df_silver = df_silver.rename(columns=mapa_renomeacao)
 
-    # Verifica se a coluna "Nome Original" existe antes de prosseguir
-    if "Nome do Produto Novo" not in df_silver.columns:
-        print(f"❌ A coluna 'Nome Original' não foi encontrada. Colunas disponíveis: {list(df_silver.columns)}")
-        return
+    # 3. NORMALIZAÇÃO PARA GARANTIR O MERGE CORRETO
+    # Criamos uma função de limpeza para padronizar os títulos de ambos os lados
+    def limpar_para_merge(texto):
+        if not isinstance(texto, str):
+            return ""
+        # Remove acentos, pontuações, deixa minúsculo e tira espaços extras
+        texto = texto.lower().strip()
+        texto = re.sub(r'[^a-z0-9]', '', texto)
+        return texto
 
-    # 3. Merge
-    df_final = df_ids.merge(df_silver, left_on="Nome do Produto", right_on="Nome do Produto Novo", how="left")
+    # Aplica a chave normalizada no CSV e na Silver
+    df_ids["key_merge"] = df_ids["Nome do Produto"].apply(limpar_para_merge)
+    df_silver["key_merge"] = df_silver["Nome do Produto Novo"].apply(limpar_para_merge)
+
+    # 4. Merge usando a chave limpa
+    df_final = df_ids.merge(df_silver, on="key_merge", how="left")
     
     # ADICIONE ESTE PRINT PARA VERIFICAR OS DADOS
     print(df_final[["Nome do Produto", "Preco"]].head(10), flush=True)
