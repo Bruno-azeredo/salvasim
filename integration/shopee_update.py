@@ -43,20 +43,21 @@ def gerar_assinatura(path, access_token):
     ).hexdigest()
     return timestamp, sign
 
-def chamar_api_shopee(path, payload, access_token):
+def chamar_api_shopee(path, payload):
+    # Pega o token dinamicamente dentro da chamada
+    access_token = pegar_token()
     url_base = "https://partner.shopeemobile.com"
     timestamp, sign = gerar_assinatura(path, access_token)
-    # Garante que o access_token está sendo passado corretamente na URL
     url = f"{url_base}{path}?partner_id={PARTNER_ID}&timestamp={timestamp}&sign={sign}&access_token={access_token}&shop_id={SHOP_ID}"
     return request_com_retry(url, payload)
 
-def atualizar_preco(item_id, preco, access_token):
+def atualizar_preco(item_id, preco):
     path = "/api/v2/product/update_price"
     payload = {"item_id": int(item_id), "price_list": [{"model_id": 0, "original_price": float(preco)}]}
-    r = chamar_api_shopee(path, payload, access_token)
+    r = chamar_api_shopee(path, payload)
     if r: print(f"💰 Preço atualizado ({item_id}) → {preco}")
 
-def atualizar_item_completo(item_id, nome, desc, img, peso, access_token):
+def atualizar_item_completo(item_id, nome, desc, img, peso):
     path = "/api/v2/product/update_item"
     payload = {
         "item_id": int(item_id),
@@ -70,18 +71,18 @@ def atualizar_item_completo(item_id, nome, desc, img, peso, access_token):
         ]
     }
     if img: payload["images"] = {"image_url_list": [img]}
-    r = chamar_api_shopee(path, payload, access_token)
+    r = chamar_api_shopee(path, payload)
     if r: print(f"🧠 Item atualizado ({item_id})")
 
-def set_status_item(item_id, unlist, access_token):
+def set_status_item(item_id, unlist):
     path = "/api/v2/product/unlist_item"
     payload = {"item_list": [{"item_id": int(item_id), "unlist": unlist}]}
-    chamar_api_shopee(path, payload, access_token)
+    chamar_api_shopee(path, payload)
 
 def testar_por_nome(nome_busca):
     print(f"🔍 Buscando dados para: {nome_busca}")
     
-    # 1. Pega o token novo e válido logo no início
+    # 1. Validação inicial do token
     token = pegar_token()
     if not token:
         print("❌ Falha ao obter o access_token.")
@@ -111,13 +112,13 @@ def testar_por_nome(nome_busca):
     item_id = int(match_csv.iloc[0]['ID do Produto'])
     print(f"🎯 ID encontrado na Shopee: {item_id}")
 
-    # 4. Executa a atualização usando o token válido
+    # 4. Executa a atualização
     print("🚀 Enviando atualização para a Shopee...")
     
-    set_status_item(item_id, False, token)
-    atualizar_preco(item_id, dados['preco_venda'], token)
+    set_status_item(item_id, False)
+    atualizar_preco(item_id, dados['preco_venda'])
     
-    # Tratamento seguro para pegar a imagem independentemente de maiúsculas/minúsculas
+    # Tratamento seguro para pegar a imagem
     coluna_imagem = next((col for col in dados.index if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), None)
     valor_imagem = dados[coluna_imagem] if coluna_imagem else ""
 
@@ -126,8 +127,7 @@ def testar_por_nome(nome_busca):
         dados['nome_produto'], 
         dados['descricao'], 
         valor_imagem, 
-        dados['peso'], 
-        token
+        dados['peso']
     )
     print("🏁 Teste concluído com sucesso!")
 
