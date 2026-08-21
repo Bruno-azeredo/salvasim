@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PARTNER_ID = 2014045
 PARTNER_KEY = "shpk55617356626c5347767977714e586e4c4f557075544e546e42784a757967"
 SHOP_ID = 1588032704
-CSV_PATH = "produtos_shopee.csv"
+CSV_PATH = "integration\\produtos_shopee.csv"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
