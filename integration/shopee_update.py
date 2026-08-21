@@ -6,12 +6,13 @@ import time
 import hashlib
 import hmac
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configurações
 PARTNER_ID = 2014045
 PARTNER_KEY = "shpk55617356626c5347767977714e586e4c4f557075544e546e42784a757967"
 SHOP_ID = 1588032704
-CSV_PATH = "integration/produtos_shopee.csv"
+CSV_PATH = "produtos_shopee.csv"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
@@ -21,7 +22,6 @@ def request_com_retry(url, payload, tentativas=3):
     for i in range(tentativas):
         try:
             r = requests.post(url, json=payload, timeout=30)
-            print(f"RESPOSTA DA SHOPEE: {r.text}")
             if r.status_code == 200:
                 res_json = r.json()
                 if res_json.get("error"):
@@ -44,7 +44,6 @@ def gerar_assinatura(path, access_token):
     return timestamp, sign
 
 def chamar_api_shopee(path, payload):
-    # Pega o token dinamicamente exatamente como no script principal
     access_token = pegar_token()
     url_base = "https://partner.shopeemobile.com"
     timestamp, sign = gerar_assinatura(path, access_token)
@@ -79,49 +78,65 @@ def set_status_item(item_id, unlist):
     payload = {"item_list": [{"item_id": int(item_id), "unlist": unlist}]}
     chamar_api_shopee(path, payload)
 
-def testar_por_nome(nome_busca):
-    print(f"🔍 Buscando dados para: {nome_busca}")
-    
-    # Busca na Silver
+def processar_produto(row):
+    try:
+        item_id = int(row["ID do Produto"])
+        nome = row["Nome do Produto"]
+        nome_novo = row.get("nome_produto", nome)
+        preco = row["preco_venda"]
+        descricao = row.get("descricao", "")
+        
+        # Trata coluna de imagem dinamicamente
+        coluna_imagem = next((col for col in row.index if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), None)
+        imagem = row[coluna_imagem] if coluna_imagem and pd.notna(row[coluna_imagem]) else ""
+        
+        peso = row.get("peso", 0.1)
+        if pd.isna(peso) or peso <= 0:
+            peso = 0.1
+
+        print(f"🔎 Processando: {nome} (ID: {item_id})")
+
+        if pd.notna(preco):
+            set_status_item(item_id, False) # Ativa o produto
+            atualizar_preco(item_id, preco)
+            atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso)
+        else:
+            set_status_item(item_id, True) # Inativa se não tiver preço
+            print(f"❌ Produto inativado por falta de preço: {item_id}")
+            
+    except Exception as e:
+        print(f"⚠️ Erro ao processar o produto {row.get('Nome do Produto', 'Desconhecido')}: {e}")
+
+def sincronizar():
+    print("\n📦 Lendo produtos_shopee.csv…")
+    df_ids = pd.read_csv(CSV_PATH)
+    df_ids.columns = df_ids.columns.str.strip().str.replace('\ufeff', '')
+
+    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
+
+    print("📊 Carregando dados do Supabase (silver_products)...")
     response = supabase.table("silver_products").select("*").execute()
     df_silver = pd.DataFrame(response.data)
-    
-    produto_silver = df_silver[df_silver['nome_produto'].str.contains(nome_busca, case=False, na=False)]
-    if produto_silver.empty:
-        print("❌ Produto não encontrado na Silver (Supabase).")
-        return
 
-    dados = produto_silver.iloc[0]
-    print(f"✅ Encontrado na Silver: {dados['nome_produto']} | Preço: {dados['preco_venda']}")
+    print(f"✅ {len(df_silver)} registros carregados do Supabase.")
 
-    # Busca o ID no CSV
-    df_ids = pd.read_csv(CSV_PATH)
-    match_csv = df_ids[df_ids['Nome do Produto'].str.contains(nome_busca, case=False, na=False)]
-    
-    if match_csv.empty:
-        print("❌ Produto não encontrado no arquivo CSV local da Shopee.")
-        return
-        
-    item_id = int(match_csv.iloc[0]['ID do Produto'])
-    print(f"🎯 ID encontrado na Shopee: {item_id}")
-
-    # Executa a atualização
-    print("🚀 Enviando atualização para a Shopee...")
-    
-    set_status_item(item_id, False)
-    atualizar_preco(item_id, dados['preco_venda'])
-    
-    coluna_imagem = next((col for col in dados.index if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), None)
-    valor_imagem = dados[coluna_imagem] if coluna_imagem else ""
-
-    atualizar_item_completo(
-        item_id, 
-        dados['nome_produto'], 
-        dados['descricao'], 
-        valor_imagem, 
-        dados['peso']
+    # Realiza o merge entre o CSV da Shopee e os dados tratados do Supabase
+    df_final = df_ids.merge(
+        df_silver,
+        left_on="Nome do Produto",
+        right_on="nome_produto",
+        how="inner"
     )
-    print("🏁 Teste concluído com sucesso!")
+
+    print(f"🔗 Merge realizado. Total de produtos pareados para atualização: {len(df_final)}")
+
+    # Executa a atualização em paralelo usando ThreadPoolExecutor (max 5 threads para respeitar limites da API)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(processar_produto, row) for _, row in df_final.iterrows()]
+        for future in as_completed(futures):
+            future.result()
+
+    print("🏁 Sincronização em lote concluída com sucesso!")
 
 if __name__ == "__main__":
-    testar_por_nome("Sabonete Lux Orquídea Negra 6x85g")
+    sincronizar()
