@@ -44,7 +44,7 @@ def gerar_assinatura(path, access_token):
     return timestamp, sign
 
 def chamar_api_shopee(path, payload):
-    # Pega o token dinamicamente dentro da chamada
+    # Pega o token dinamicamente exatamente como no script principal
     access_token = pegar_token()
     url_base = "https://partner.shopeemobile.com"
     timestamp, sign = gerar_assinatura(path, access_token)
@@ -82,14 +82,7 @@ def set_status_item(item_id, unlist):
 def testar_por_nome(nome_busca):
     print(f"🔍 Buscando dados para: {nome_busca}")
     
-    # 1. Validação inicial do token
-    token = pegar_token()
-    if not token:
-        print("❌ Falha ao obter o access_token.")
-        return
-    print("🔑 Token obtido com sucesso!")
-
-    # 2. Busca na Silver
+    # Busca na Silver
     response = supabase.table("silver_products").select("*").execute()
     df_silver = pd.DataFrame(response.data)
     
@@ -101,7 +94,7 @@ def testar_por_nome(nome_busca):
     dados = produto_silver.iloc[0]
     print(f"✅ Encontrado na Silver: {dados['nome_produto']} | Preço: {dados['preco_venda']}")
 
-    # 3. Busca o ID no CSV
+    # Busca o ID no CSV
     df_ids = pd.read_csv(CSV_PATH)
     match_csv = df_ids[df_ids['Nome do Produto'].str.contains(nome_busca, case=False, na=False)]
     
@@ -112,13 +105,12 @@ def testar_por_nome(nome_busca):
     item_id = int(match_csv.iloc[0]['ID do Produto'])
     print(f"🎯 ID encontrado na Shopee: {item_id}")
 
-    # 4. Executa a atualização
+    # Executa a atualização
     print("🚀 Enviando atualização para a Shopee...")
     
     set_status_item(item_id, False)
     atualizar_preco(item_id, dados['preco_venda'])
     
-    # Tratamento seguro para pegar a imagem
     coluna_imagem = next((col for col in dados.index if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), None)
     valor_imagem = dados[coluna_imagem] if coluna_imagem else ""
 
