@@ -29,11 +29,21 @@ def gerar_assinatura(path):
 # PEGAR TOKEN DO AMBIENTE (COM RENOVAÇÃO AUTOMÁTICA)
 # ============================
 
+# ============================
+# PEGAR TOKEN DO AMBIENTE (COM RENOVAÇÃO AUTOMÁTICA)
+# ============================
 def pegar_token():
-    # Lê diretamente o token atual das variáveis de ambiente (ou arquivo .env / export)
+    # Se houver um refresh token no ambiente (como nas secrets do GitHub), renova na hora para garantir um token fresco
+    if os.environ.get("SHOPEE_REFRESH_TOKEN"):
+        try:
+            return renovar_token_via_api()
+        except Exception as e:
+            print(f"⚠️ Falha ao renovar via refresh_token: {e}")
+
+    # Fallback para o access token estático caso não haja refresh token
     token = os.environ.get("SHOPEE_ACCESS_TOKEN")
     if not token:
-        raise Exception("❌ SHOPEE_ACCESS_TOKEN não encontrado nas variáveis de ambiente.")
+        raise Exception("❌ Nem o SHOPEE_REFRESH_TOKEN nem o SHOPEE_ACCESS_TOKEN foram encontrados nas variáveis de ambiente.")
     return token
 
 # ============================
