@@ -28,7 +28,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-#        run: python ingest/scraperv2.py
+        run: python ingest/scraperv2.py
 
       - name: 2. Executar Processamento Silver (Leitura do Supabase)
         env:
