@@ -65,7 +65,6 @@ def preparar_dados(df_silver):
     df["refrigerado"] = df.get("refrigerado", False)
     df["descricao"] = df.get("descricao", "")
     
-    # Tratamento dinâmico para encontrar a coluna de imagem
     coluna_img_silver = next((col for col in df.columns if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), "imagem")
     df["imagem_url"] = df.get(coluna_img_silver, "")
     df["peso"] = df.get("peso", 0.1)
@@ -74,11 +73,9 @@ def preparar_dados(df_silver):
 
     df_update = df[df["vendavel"]].copy()
 
-    # Garante que as colunas existem antes de filtrar
     colunas_disponiveis = [c for c in ["nome_original", "nome_produto", "preco_venda", "descricao", coluna_img_silver, "peso"] if c in df_update.columns]
     df_update = df_update[colunas_disponiveis]
 
-    # Renomeia dinamicamente com base na coluna de imagem encontrada
     rename_dict = {
         "nome_original": "Nome Original",
         "nome_produto": "Nome do Produto Novo",
@@ -108,7 +105,7 @@ def gerar_assinatura(path, access_token):
     return timestamp, sign
 
 # ============================
-# ATUALIZAR PREÇO
+# ATUALIZAR PREÇO (COM RETORNO EXPLÍCITO)
 # ============================
 def atualizar_preco(item_id, preco, access_token):
     path = "/api/v2/product/update_price"
@@ -134,7 +131,9 @@ def atualizar_preco(item_id, preco, access_token):
 
     r = request_com_retry(url, payload)
     if r:
-        print(f"💰 Preço atualizado ({item_id}) → {preco} | Resposta: {r.text}")
+        print(f"💰 [API RETORNO] Preço ID {item_id} → {preco} | Status: {r.status_code} | Resposta: {r.text}")
+    else:
+        print(f"❌ [API ERRO] Falha total ao enviar requisição de preço para o ID {item_id}")
 
 # ============================
 # ATUALIZAR ITEM COMPLETO
@@ -172,9 +171,8 @@ def atualizar_item_completo(item_id, nome_produto, descricao, imagem, peso, acce
         }
 
     r = request_com_retry(url, payload)
-
     if r:
-        print(f"🧠 Item atualizado ({item_id}) | Resposta: {r.text}")
+        print(f"🧠 [API RETORNO] Item Completo ID {item_id} | Status: {r.status_code} | Resposta: {r.text}")
 
 # ============================
 # INATIVAR
@@ -200,7 +198,7 @@ def inativar_produto(item_id, access_token):
 
     r = request_com_retry(url, payload)
     if r:
-        print(f"❌ Inativando {item_id} | Resposta: {r.text}")
+        print(f"❌ [API RETORNO] Inativar ID {item_id} | Status: {r.status_code} | Resposta: {r.text}")
 
 # ============================
 # ATIVAR
@@ -230,44 +228,14 @@ def ativar_produto(item_id, access_token):
     }
 
     r = request_com_retry(url, payload)
-
     if r:
-        print(f"✅ Ativando {item_id} | Resposta: {r.text}")
+        print(f"✅ [API RETORNO] Ativar ID {item_id} | Status: {r.status_code} | Resposta: {r.text}")
 
 # ============================
 # PROCESSAR PRODUTO INDIVIDUAL
 # ============================
 def processar_produto(row, access_token):
     try:
-        item_id = int(row["ID do Produto"])
-        nome = row["Nome do Produto"]
-        nome_novo = row.get("Nome do Produto Novo", nome)
-        preco = row.get("Preco")
-        descricao = row.get("Descricao", "")
-        imagem = row.get("Imagem", "")
-        peso = row.get("Peso", 0.1)
-
-        print(f"🔎 Processando: {nome} (ID: {item_id})")
-
-        if pd.notna(preco):
-            ativar_produto(item_id, access_token)
-            atualizar_preco(item_id, preco, access_token)
-            atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso, access_token)
-        else:
-            inativar_produto(item_id, access_token)
-            
-    except Exception as e:
-        print(f"⚠️ Erro ao processar produto ID {row.get('ID do Produto', 'Desconhecido')}: {e}")
-
-# ============================
-# SINCRONIZAÇÃO
-# ============================
-# ============================
-# PROCESSAR PRODUTO INDIVIDUAL (COM DEBUG)
-# ============================
-def processar_produto(row, access_token):
-    try:
-        # Tenta achar a coluna de ID de forma dinâmica caso o nome varie
         id_col = next((c for c in ['ID do Produto', 'id_produto', 'item_id', 'ID'] if c in row and pd.notna(row[c])), None)
         if not id_col:
             print(f"⚠️ Erro: Coluna de ID não encontrada na linha: {row}")
@@ -281,21 +249,21 @@ def processar_produto(row, access_token):
         imagem = row.get("Imagem", "")
         peso = row.get("Peso", 0.1)
 
-        print(f"🔎 Processando: {nome} (ID: {item_id}) | Preço: {preco}")
+        print(f"\n🔎 Processando: {nome} (ID: {item_id}) | Preço: {preco}")
 
         if pd.notna(preco):
             ativar_produto(item_id, access_token)
             atualizar_preco(item_id, preco, access_token)
             atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso, access_token)
         else:
-            print(f"⚠️ Produto {item_id} sem preço mapeado. Verifique se o nome no CSV bate com o Supabase.")
+            print(f"⚠️ Produto {item_id} sem preço mapeado.")
             inativar_produto(item_id, access_token)
             
     except Exception as e:
         print(f"❌ Erro crítico ao processar linha: {e}")
 
 # ============================
-# SINCRONIZAÇÃO (COM DEBUG DE MERGE)
+# SINCRONIZAÇÃO
 # ============================
 def sincronizar():
     print("\n📦 Lendo produtos_shopee.csv…")
@@ -311,7 +279,7 @@ def sincronizar():
         .str.replace('\ufeff', '')
     )
 
-    print(f"➡ {len(df_ids)} produtos carregados do CSV. Colunas: {list(df_ids.columns)}")
+    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
 
     df_silver = carregar_dados_atuais()
     if df_silver.empty:
@@ -320,7 +288,6 @@ def sincronizar():
 
     df_update = preparar_dados(df_silver)
 
-    # Normalizar strings para evitar falha no merge por diferença de maiúsculas/espaços
     if "Nome do Produto" in df_ids.columns and "Nome Original" in df_update.columns:
         df_ids["_match_key"] = df_ids["Nome do Produto"].astype(str).str.strip().str.lower()
         df_update["_match_key"] = df_update["Nome Original"].astype(str).str.strip().str.lower()
@@ -342,9 +309,6 @@ def sincronizar():
     print(f"🔗 Produtos encontrados na base (com preço): {total_encontrados}")
     print(f"🔗 Produtos sem preço (serão inativados): {total_sem_preco}")
     print(f"🔗 ----------------------------------------\n")
-
-    if total_encontrados == 0:
-        print("⚠️ ALERTA: Nenhum produto deu 'match' entre o CSV e o Supabase! Verifique se os nomes dos produtos são idênticos.")
 
     access_token = pegar_token()
 
