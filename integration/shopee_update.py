@@ -29,10 +29,10 @@ def request_com_retry(url, payload, tentativas=3):
             r = requests.post(url, json=payload, timeout=30)
             return r
         except Exception as e:
-            print(f"⚠️ erro tentativa {i+1}: {e}")
+            print(f"⚠️ Erro tentativa {i+1}: {e}")
             time.sleep(1)
 
-    print("❌ falhou após várias tentativas")
+    print("❌ Falhou após várias tentativas")
     return None
 
 # ============================
@@ -105,11 +105,8 @@ def gerar_assinatura(path, access_token):
     return timestamp, sign
 
 # ============================
-# ATUALIZAR PREÇO (COM RETORNO EXPLÍCITO)
+# ATUALIZAR PREÇO
 # ============================
-# Mantenha o token fora das funções de atualização para não sobrecarregar a API
-# Obtenha uma vez na sincronização e passe o valor.
-
 def atualizar_preco(item_id, preco, access_token):
     path = "/api/v2/product/update_price"
     url_base = "https://partner.shopeemobile.com"
@@ -122,18 +119,17 @@ def atualizar_preco(item_id, preco, access_token):
         "price_list": [{"model_id": 0, "original_price": float(preco)}]
     }
 
-    try:
-        # Aumente o timeout para ambientes de nuvem (o GitHub pode ser mais lento que local)
-        r = requests.post(url, json=payload, timeout=60)
-        # Se a API responder algo, printamos
-        print(f"💰 {item_id} -> Status: {r.status_code} | Resposta: {r.text}")
-    except Exception as e:
-        print(f"❌ Erro na requisição para {item_id}: {str(e)}")
+    r = request_com_retry(url, payload)
+    if r and r.status_code == 200:
+        print(f"💰 {item_id} | Preço atualizado: R${preco} [OK]")
+    else:
+        status = r.status_code if r else 'Erro'
+        print(f"❌ {item_id} | Falha ao atualizar preço (Status: {status})")
+
 # ============================
 # ATUALIZAR ITEM COMPLETO
 # ============================
 def atualizar_item_completo(item_id, nome_produto, descricao, imagem, peso, access_token):
-    access_token = pegar_token()
     path = "/api/v2/product/update_item"
     url_base = "https://partner.shopeemobile.com"
 
@@ -166,14 +162,16 @@ def atualizar_item_completo(item_id, nome_produto, descricao, imagem, peso, acce
         }
 
     r = request_com_retry(url, payload)
-    if r:
-        print(f"🧠 [API RETORNO] Item Completo ID {item_id} | Status: {r.status_code} | Resposta: {r.text}")
+    if r and r.status_code == 200:
+        print(f"📝 {item_id} | Detalhes atualizados [OK]")
+    else:
+        status = r.status_code if r else 'Erro'
+        print(f"❌ {item_id} | Falha ao atualizar detalhes (Status: {status})")
 
 # ============================
 # INATIVAR
 # ============================
 def inativar_produto(item_id, access_token):
-    access_token = pegar_token()
     path = "/api/v2/product/unlist_item"
     url_base = "https://partner.shopeemobile.com"
 
@@ -193,14 +191,16 @@ def inativar_produto(item_id, access_token):
     }
 
     r = request_com_retry(url, payload)
-    if r:
-        print(f"❌ [API RETORNO] Inativar ID {item_id} | Status: {r.status_code} | Resposta: {r.text}")
+    if r and r.status_code == 200:
+        print(f"🚫 {item_id} | Produto inativado [OK]")
+    else:
+        status = r.status_code if r else 'Erro'
+        print(f"❌ {item_id} | Falha ao inativar (Status: {status})")
 
 # ============================
 # ATIVAR
 # ============================
 def ativar_produto(item_id, access_token):
-    access_token = pegar_token()
     path = "/api/v2/product/unlist_item"
     url_base = "https://partner.shopeemobile.com"
 
@@ -225,8 +225,11 @@ def ativar_produto(item_id, access_token):
     }
 
     r = request_com_retry(url, payload)
-    if r:
-        print(f"✅ [API RETORNO] Ativar ID {item_id} | Status: {r.status_code} | Resposta: {r.text}")
+    if r and r.status_code == 200:
+        print(f"✅ {item_id} | Produto ativado [OK]")
+    else:
+        status = r.status_code if r else 'Erro'
+        print(f"❌ {item_id} | Falha ao ativar (Status: {status})")
 
 # ============================
 # PROCESSAR PRODUTO INDIVIDUAL
@@ -246,14 +249,14 @@ def processar_produto(row, access_token):
         imagem = row.get("Imagem", "")
         peso = row.get("Peso", 0.1)
 
-        print(f"\n🔎 Processando: {nome} (ID: {item_id}) | Preço: {preco}")
+        status_label = f"R${preco}" if pd.notna(preco) else "SEM PREÇO"
+        print(f"🔄 Processando: {nome} (ID: {item_id}) | Preço: {status_label}")
 
         if pd.notna(preco):
             ativar_produto(item_id, access_token)
             atualizar_preco(item_id, preco, access_token)
             atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso, access_token)
         else:
-            print(f"⚠️ Produto {item_id} sem preço mapeado.")
             inativar_produto(item_id, access_token)
             
     except Exception as e:
