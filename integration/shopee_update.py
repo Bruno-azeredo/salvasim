@@ -108,6 +108,7 @@ def gerar_assinatura(path, access_token):
 # ATUALIZAR PREÇO (COM RETORNO EXPLÍCITO)
 # ============================
 def atualizar_preco(item_id, preco, access_token):
+    access_token = pegar_token()
     path = "/api/v2/product/update_price"
     url_base = "https://partner.shopeemobile.com"
 
@@ -139,6 +140,7 @@ def atualizar_preco(item_id, preco, access_token):
 # ATUALIZAR ITEM COMPLETO
 # ============================
 def atualizar_item_completo(item_id, nome_produto, descricao, imagem, peso, access_token):
+    access_token = pegar_token()
     path = "/api/v2/product/update_item"
     url_base = "https://partner.shopeemobile.com"
 
@@ -178,6 +180,7 @@ def atualizar_item_completo(item_id, nome_produto, descricao, imagem, peso, acce
 # INATIVAR
 # ============================
 def inativar_produto(item_id, access_token):
+    access_token = pegar_token()
     path = "/api/v2/product/unlist_item"
     url_base = "https://partner.shopeemobile.com"
 
@@ -204,6 +207,7 @@ def inativar_produto(item_id, access_token):
 # ATIVAR
 # ============================
 def ativar_produto(item_id, access_token):
+    access_token = pegar_token()
     path = "/api/v2/product/unlist_item"
     url_base = "https://partner.shopeemobile.com"
 
