@@ -78,75 +78,69 @@ def set_status_item(item_id, unlist):
     payload = {"item_list": [{"item_id": int(item_id), "unlist": unlist}]}
     chamar_api_shopee(path, payload)
 
+def normalizar_texto(texto):
+    if pd.isna(texto): return ""
+    return str(texto).strip().lower()
+
+def carregar_todos_do_supabase():
+    todos_registros = []
+    chunk_size = 1000
+    offset = 0
+    while True:
+        response = supabase.table("silver_products").select("*").range(offset, offset + chunk_size - 1).execute()
+        if not response.data: break
+        todos_registros.extend(response.data)
+        offset += chunk_size
+    return pd.DataFrame(todos_registros)
+
 def processar_produto(row):
     try:
         item_id = int(row["ID do Produto"])
-        nome = row["Nome do Produto"]
-        nome_novo = row.get("nome_produto", nome)
-        preco = row["preco_venda"]
+        nome_csv = row["Nome do Produto"]
+        # Usa o nome oficial vindo do Supabase para atualizar a Shopee
+        nome_oficial = row.get("nome_produto", nome_csv)
+        preco = row.get("preco_venda")
         descricao = row.get("descricao", "")
         
-        # Trata coluna de imagem dinamicamente
         coluna_imagem = next((col for col in row.index if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), None)
         imagem = row[coluna_imagem] if coluna_imagem and pd.notna(row[coluna_imagem]) else ""
         
         peso = row.get("peso", 0.1)
-        if pd.isna(peso) or peso <= 0:
-            peso = 0.1
-
-        print(f"🔎 Processando: {nome} (ID: {item_id})")
+        peso = float(peso) if pd.notna(peso) and peso > 0 else 0.1
 
         if pd.notna(preco):
-            set_status_item(item_id, False) # Ativa o produto
+            print(f"🔎 Atualizando: {nome_oficial} (ID: {item_id})")
+            set_status_item(item_id, False)
             atualizar_preco(item_id, preco)
-            atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso)
+            atualizar_item_completo(item_id, nome_oficial, descricao, imagem, peso)
         else:
-            set_status_item(item_id, True) # Inativa se não tiver preço
-            print(f"❌ Produto inativado por falta de preço: {item_id}")
-            
+            print(f"❌ Inativando (sem preço): {item_id}")
+            set_status_item(item_id, True)
     except Exception as e:
-        print(f"⚠️ Erro ao processar o produto {row.get('Nome do Produto', 'Desconhecido')}: {e}")
+        print(f"⚠️ Erro ao processar produto {item_id}: {e}")
 
 def sincronizar():
     print("\n📦 Lendo produtos_shopee.csv…")
     df_ids = pd.read_csv(CSV_PATH, encoding="utf-8-sig")
     df_ids.columns = df_ids.columns.str.strip()
-    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
-
-    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
-
-    print("📊 Carregando dados do Supabase (silver_products)...")
-    response = supabase.table("silver_products").select("*").execute()
-    df_silver = pd.DataFrame(response.data)
-
-    print(f"✅ {len(df_silver)} registros carregados do Supabase.")
-
-    # Bloco de Diagnóstico para ver os nomes de ambos os lados
-    print("--- DIAGNÓSTICO DE NOMES ---")
-    print("Exemplos no CSV:", df_ids['Nome do Produto'].head(3).tolist())
-    print("Exemplos no Supabase:", df_silver['nome_produto'].head(3).tolist())
     
-    # Verifica se há intersecção real entre as chaves
-    comuns = set(df_ids['Nome do Produto']).intersection(set(df_silver['nome_produto']))
-    print(f"🔍 Total exato de chaves idênticas encontradas entre as bases: {len(comuns)}")
+    # Normalização para garantir o match
+    df_ids['chave'] = df_ids['Nome do Produto'].apply(normalizar_texto)
 
-    # Realiza o merge entre o CSV da Shopee e os dados tratados do Supabase
-    df_final = df_ids.merge(
-        df_silver,
-        left_on="Nome do Produto",
-        right_on="nome_produto",
-        how="inner"
-    )
+    print("📊 Carregando dados completos do Supabase (paginado)...")
+    df_silver = carregar_todos_do_supabase()
+    df_silver['chave'] = df_silver['nome_original'].apply(normalizar_texto) # Ajuste 'nome_original' para a coluna correta
 
-    print(f"🔗 Merge realizado. Total de produtos pareados para atualização: {len(df_final)}")
+    df_final = df_ids.merge(df_silver, on="chave", how="left")
 
-    # Executa a atualização em paralelo usando ThreadPoolExecutor (max 5 threads para respeitar limites da API)
+    print(f"🔗 Merge realizado: {len(df_final)} produtos no escopo.")
+
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(processar_produto, row) for _, row in df_final.iterrows()]
         for future in as_completed(futures):
             future.result()
 
-    print("🏁 Sincronização em lote concluída com sucesso!")
+    print("🏁 Sincronização concluída!")
 
 if __name__ == "__main__":
     sincronizar()
