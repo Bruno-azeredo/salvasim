@@ -120,6 +120,15 @@ def sincronizar():
 
     print(f"✅ {len(df_silver)} registros carregados do Supabase.")
 
+    # Bloco de Diagnóstico para ver os nomes de ambos os lados
+    print("--- DIAGNÓSTICO DE NOMES ---")
+    print("Exemplos no CSV:", df_ids['chave_busca'].head(3).tolist())
+    print("Exemplos no Supabase:", df_silver['chave_busca'].head(3).tolist())
+    
+    # Verifica se há intersecção real entre as chaves
+    comuns = set(df_ids['chave_busca']).intersection(set(df_silver['chave_busca']))
+    print(f"🔍 Total exato de chaves idênticas encontradas entre as bases: {len(comuns)}")
+
     # Realiza o merge entre o CSV da Shopee e os dados tratados do Supabase
     df_final = df_ids.merge(
         df_silver,
