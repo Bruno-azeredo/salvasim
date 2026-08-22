@@ -3,64 +3,66 @@ import hashlib
 import hmac
 import requests
 import os
+from supabase import create_client
 
-# Configurações lidas do ambiente (GitHub Secrets)
-PARTNER_ID = int(os.environ.get("SHOPEE_PARTNER_ID", 2014045))
-PARTNER_KEY = os.environ.get("SHOPEE_PARTNER_KEY", "shpk55617356626c5347767977714e586e4c4f557075544e546e42784a757967")
-SHOP_ID = int(os.environ.get("SHOPEE_SHOP_ID", 1588032704))
-
+PARTNER_ID = 2014045
+PARTNER_KEY = "shpk55617356626c5347767977714e586e4c4f557075544e546e42784a757967"
+SHOP_ID = 1588032704
 BASE_URL = "https://partner.shopeemobile.com"
+
+# Conexão com o Supabase usando as variáveis de ambiente do GitHub Actions ou local
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ============================
 # GERAR ASSINATURA
 # ============================
 def gerar_assinatura(path):
     timestamp = int(time.time())
-    # Nota: A assinatura da Shopee para auth/token/get geralmente não leva o access_token/shop_id
     base_string = f"{PARTNER_ID}{path}{timestamp}"
+
     sign = hmac.new(
         PARTNER_KEY.encode("utf-8"),
         base_string.encode("utf-8"),
         hashlib.sha256
     ).hexdigest()
+
     return timestamp, sign
 
 # ============================
-# PEGAR TOKEN DO AMBIENTE (COM RENOVAÇÃO AUTOMÁTICA)
-# ============================
-
-# ============================
-# PEGAR TOKEN DO AMBIENTE (COM RENOVAÇÃO AUTOMÁTICA)
+# PEGAR TOKEN DO SUPABASE
 # ============================
 def pegar_token():
-    # Se houver um refresh token no ambiente (como nas secrets do GitHub), renova na hora para garantir um token fresco
-    if os.environ.get("SHOPEE_REFRESH_TOKEN"):
-        try:
-            return renovar_token_via_api()
-        except Exception as e:
-            print(f"⚠️ Falha ao renovar via refresh_token: {e}")
+    response = supabase.table("shopee_token").select("access_token, refresh_token, expire_at").limit(1).execute()
+    
+    if not response.data:
+        raise Exception("Token não encontrado na tabela 'shopee_token' do Supabase")
 
-    # Fallback para o access token estático caso não haja refresh token
-    token = os.environ.get("SHOPEE_ACCESS_TOKEN")
-    if not token:
-        raise Exception("❌ Nem o SHOPEE_REFRESH_TOKEN nem o SHOPEE_ACCESS_TOKEN foram encontrados nas variáveis de ambiente.")
-    return token
+    row = response.data[0]
+    access_token = row["access_token"]
+    refresh_token = row["refresh_token"]
+    expire_at = row["expire_at"]
+
+    # Se expirou, renova
+    if time.time() > expire_at:
+        return renovar_token(refresh_token)
+
+    return access_token
 
 # ============================
-# RENOVAR TOKEN (Adaptação para GitHub Actions)
+# RENOVAR TOKEN
 # ============================
-def renovar_token_via_api():
-    """
-    Nota: Em GitHub Actions, renovar o token e tentar salvar de volta 
-    é complexo pois o ambiente é efêmero. O ideal é que seu token 
-    tenha uma validade longa ou você use o refresh_token para obter um novo
-    e atualizar manualmente no GitHub Secrets se necessário.
-    """
-    refresh_token = os.environ.get("SHOPEE_REFRESH_TOKEN")
+def renovar_token(refresh_token):
     path = "/api/v2/auth/access_token/get"
     timestamp, sign = gerar_assinatura(path)
 
-    url = f"{BASE_URL}{path}?partner_id={PARTNER_ID}&timestamp={timestamp}&sign={sign}"
+    url = (
+        f"{BASE_URL}{path}"
+        f"?partner_id={PARTNER_ID}"
+        f"&timestamp={timestamp}"
+        f"&sign={sign}"
+    )
 
     payload = {
         "refresh_token": refresh_token,
@@ -74,5 +76,17 @@ def renovar_token_via_api():
     if data.get("error"):
         raise Exception(f"Erro ao renovar token: {data}")
 
-    print("🔄 Novo token obtido com sucesso. Atualize seu GitHub Secret SHOPEE_ACCESS_TOKEN.")
-    return data["access_token"]
+    novo_access = data["access_token"]
+    novo_refresh = data["refresh_token"]
+    expire_at = time.time() + data["expire_in"] - 60  # margem de segurança
+
+    # Atualiza no Supabase
+    supabase.table("shopee_token").update({
+        "access_token": novo_access,
+        "refresh_token": novo_refresh,
+        "expire_at": expire_at
+    }).eq("id", 1).execute()  # Ajuste o filtro 'id' conforme sua tabela
+
+    print("🔄 Token renovado automaticamente no Supabase")
+
+    return novo_access
