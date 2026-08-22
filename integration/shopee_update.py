@@ -133,9 +133,15 @@ def sincronizar():
 
     df_final = df_ids.merge(df_silver, on="chave", how="left")
 
-    print(f"🔗 Merge realizado: {len(df_final)} produtos no escopo.")
+    total_encontrados = df_final['preco_venda'].notna().sum()
+    total_sem_preco = len(df_final) - total_encontrados
+    print(f"\n🔗 ----------------------------------------")
+    print(f"🔗 Total de produtos no CSV: {len(df_final)}")
+    print(f"🔗 Produtos encontrados na Silver (com preço/match): {total_encontrados}")
+    print(f"🔗 Produtos NÃO encontrados ou sem preço (serão inativados): {total_sem_preco}")
+    print(f"🔗 ----------------------------------------\n")
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(processar_produto, row) for _, row in df_final.iterrows()]
         for future in as_completed(futures):
             future.result()
