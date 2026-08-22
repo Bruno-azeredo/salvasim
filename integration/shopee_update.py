@@ -109,8 +109,9 @@ def processar_produto(row):
 
 def sincronizar():
     print("\n📦 Lendo produtos_shopee.csv…")
-    df_ids = pd.read_csv(CSV_PATH)
-    df_ids.columns = df_ids.columns.str.strip().str.replace('\ufeff', '')
+    df_ids = pd.read_csv(CSV_PATH, encoding="utf-8-sig")
+    df_ids.columns = df_ids.columns.str.strip()
+    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
 
     print(f"➡ {len(df_ids)} produtos carregados do CSV.")
 
@@ -122,11 +123,11 @@ def sincronizar():
 
     # Bloco de Diagnóstico para ver os nomes de ambos os lados
     print("--- DIAGNÓSTICO DE NOMES ---")
-    print("Exemplos no CSV:", df_ids['chave_busca'].head(3).tolist())
-    print("Exemplos no Supabase:", df_silver['chave_busca'].head(3).tolist())
+    print("Exemplos no CSV:", df_ids['Nome do Produto'].head(3).tolist())
+    print("Exemplos no Supabase:", df_silver['nome_produto'].head(3).tolist())
     
     # Verifica se há intersecção real entre as chaves
-    comuns = set(df_ids['chave_busca']).intersection(set(df_silver['chave_busca']))
+    comuns = set(df_ids['Nome do Produto']).intersection(set(df_silver['nome_produto']))
     print(f"🔍 Total exato de chaves idênticas encontradas entre as bases: {len(comuns)}")
 
     # Realiza o merge entre o CSV da Shopee e os dados tratados do Supabase
