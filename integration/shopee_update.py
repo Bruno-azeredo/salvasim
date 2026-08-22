@@ -107,35 +107,28 @@ def gerar_assinatura(path, access_token):
 # ============================
 # ATUALIZAR PREÇO (COM RETORNO EXPLÍCITO)
 # ============================
+# Mantenha o token fora das funções de atualização para não sobrecarregar a API
+# Obtenha uma vez na sincronização e passe o valor.
+
 def atualizar_preco(item_id, preco, access_token):
-    access_token = pegar_token()
     path = "/api/v2/product/update_price"
     url_base = "https://partner.shopeemobile.com"
-
     timestamp, sign = gerar_assinatura(path, access_token)
-
-    url = (
-        f"{url_base}{path}"
-        f"?partner_id={PARTNER_ID}"
-        f"&timestamp={timestamp}"
-        f"&sign={sign}"
-        f"&access_token={access_token}"
-        f"&shop_id={SHOP_ID}"
-    )
+    
+    url = f"{url_base}{path}?partner_id={PARTNER_ID}&timestamp={timestamp}&sign={sign}&access_token={access_token}&shop_id={SHOP_ID}"
 
     payload = {
         "item_id": int(item_id),
-        "price_list": [
-            {"model_id": 0, "original_price": float(preco)}
-        ]
+        "price_list": [{"model_id": 0, "original_price": float(preco)}]
     }
 
-    r = request_com_retry(url, payload)
-    if r:
-        print(f"💰 [API RETORNO] Preço ID {item_id} → {preco} | Status: {r.status_code} | Resposta: {r.text}")
-    else:
-        print(f"❌ [API ERRO] Falha total ao enviar requisição de preço para o ID {item_id}")
-
+    try:
+        # Aumente o timeout para ambientes de nuvem (o GitHub pode ser mais lento que local)
+        r = requests.post(url, json=payload, timeout=60)
+        # Se a API responder algo, printamos
+        print(f"💰 {item_id} -> Status: {r.status_code} | Resposta: {r.text}")
+    except Exception as e:
+        print(f"❌ Erro na requisição para {item_id}: {str(e)}")
 # ============================
 # ATUALIZAR ITEM COMPLETO
 # ============================
