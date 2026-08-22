@@ -8,7 +8,9 @@ import hmac
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Configurações
+# ============================
+# CONFIG
+# ============================
 PARTNER_ID = 2014045
 PARTNER_KEY = "shpk55617356626c5347767977714e586e4c4f557075544e546e42784a757967"
 SHOP_ID = 1588032704
@@ -18,135 +20,300 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# ============================
+# REQUEST COM RETRY
+# ============================
 def request_com_retry(url, payload, tentativas=3):
     for i in range(tentativas):
         try:
             r = requests.post(url, json=payload, timeout=30)
-            if r.status_code == 200:
-                res_json = r.json()
-                if res_json.get("error"):
-                    print(f"⚠️ Erro retornado pela API da Shopee: {res_json}")
-                return r
-            time.sleep(1)
+            return r
         except Exception as e:
-            print(f"⚠️ Erro tentativa {i+1}: {e}")
-            time.sleep(2)
+            print(f"⚠️ erro tentativa {i+1}: {e}")
+            time.sleep(1)
+
+    print("❌ falhou após várias tentativas")
     return None
 
+# ============================
+# CARREGAR DADOS DO SUPABASE (PAGINADO)
+# ============================
+def carregar_dados_atuais():
+    print("📊 Carregando dados do Supabase (silver_products)...")
+    todos_registros = []
+    chunk_size = 1000
+    offset = 0
+    while True:
+        response = supabase.table("silver_products").select("*").range(offset, offset + chunk_size - 1).execute()
+        if not response.data: 
+            break
+        todos_registros.extend(response.data)
+        offset += chunk_size
+    
+    df = pd.DataFrame(todos_registros)
+    print(f"✅ {len(df)} registros carregados do Supabase")
+    return df
+
+# ============================
+# PREPARAR DADOS
+# ============================
+def preparar_dados(df_silver):
+    print("🧠 Aplicando regras de negócio...")
+
+    df = df_silver.copy()
+
+    df["refrigerado"] = df.get("refrigerado", False)
+    df["descricao"] = df.get("descricao", "")
+    
+    # Tratamento dinâmico para encontrar a coluna de imagem
+    coluna_img_silver = next((col for col in df.columns if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), "imagem")
+    df["imagem_url"] = df.get(coluna_img_silver, "")
+    df["peso"] = df.get("peso", 0.1)
+
+    df["vendavel"] = df["refrigerado"] == False
+
+    df_update = df[df["vendavel"]].copy()
+
+    # Garante que as colunas existem antes de filtrar
+    colunas_disponiveis = [c for c in ["nome_original", "nome_produto", "preco_venda", "descricao", coluna_img_silver, "peso"] if c in df_update.columns]
+    df_update = df_update[colunas_disponiveis]
+
+    # Renomeia dinamicamente com base na coluna de imagem encontrada
+    rename_dict = {
+        "nome_original": "Nome Original",
+        "nome_produto": "Nome do Produto Novo",
+        "preco_venda": "Preco",
+        "descricao": "Descricao",
+        coluna_img_silver: "Imagem",
+        "peso": "Peso"
+    }
+    df_update.rename(columns=rename_dict, inplace=True)
+
+    print(f"🛒 Produtos vendáveis: {len(df_update)}")
+    return df_update
+
+# ============================
+# ASSINATURA
+# ============================
 def gerar_assinatura(path, access_token):
     timestamp = int(time.time())
     base_string = f"{PARTNER_ID}{path}{timestamp}{access_token}{SHOP_ID}"
+
     sign = hmac.new(
         PARTNER_KEY.encode("utf-8"),
         base_string.encode("utf-8"),
         hashlib.sha256
     ).hexdigest()
+
     return timestamp, sign
 
-def chamar_api_shopee(path, payload):
-    access_token = pegar_token()
-    url_base = "https://partner.shopeemobile.com"
-    timestamp, sign = gerar_assinatura(path, access_token)
-    url = f"{url_base}{path}?partner_id={PARTNER_ID}&timestamp={timestamp}&sign={sign}&access_token={access_token}&shop_id={SHOP_ID}"
-    return request_com_retry(url, payload)
-
-def atualizar_preco(item_id, preco):
+# ============================
+# ATUALIZAR PREÇO
+# ============================
+def atualizar_preco(item_id, preco, access_token):
     path = "/api/v2/product/update_price"
-    payload = {"item_id": int(item_id), "price_list": [{"model_id": 0, "original_price": float(preco)}]}
-    r = chamar_api_shopee(path, payload)
-    if r: print(f"💰 Preço atualizado ({item_id}) → {preco}")
+    url_base = "https://partner.shopeemobile.com"
 
-def atualizar_item_completo(item_id, nome, desc, img, peso):
-    path = "/api/v2/product/update_item"
+    timestamp, sign = gerar_assinatura(path, access_token)
+
+    url = (
+        f"{url_base}{path}"
+        f"?partner_id={PARTNER_ID}"
+        f"&timestamp={timestamp}"
+        f"&sign={sign}"
+        f"&access_token={access_token}"
+        f"&shop_id={SHOP_ID}"
+    )
+
     payload = {
         "item_id": int(item_id),
-        "item_name": str(nome)[:120],
-        "description": str(desc)[:3000],
-        "weight": float(peso),
+        "price_list": [
+            {"model_id": 0, "original_price": float(preco)}
+        ]
+    }
+
+    r = request_com_retry(url, payload)
+    if r:
+        print(f"💰 Preço atualizado ({item_id}) → {preco} | Resposta: {r.text}")
+
+# ============================
+# ATUALIZAR ITEM COMPLETO
+# ============================
+def atualizar_item_completo(item_id, nome_produto, descricao, imagem, peso, access_token):
+    path = "/api/v2/product/update_item"
+    url_base = "https://partner.shopeemobile.com"
+
+    timestamp, sign = gerar_assinatura(path, access_token)
+
+    url = (
+        f"{url_base}{path}"
+        f"?partner_id={PARTNER_ID}"
+        f"&timestamp={timestamp}"
+        f"&sign={sign}"
+        f"&access_token={access_token}"
+        f"&shop_id={SHOP_ID}"
+    )
+
+    payload = {
+        "item_id": int(item_id),
+        "item_name": str(nome_produto)[:120],
+        "description": str(descricao)[:3000],
+        "weight": float(peso) if pd.notna(peso) and peso > 0 else 0.1,
         "logistic_info": [
             {"logistic_id": 91003, "enabled": True},
             {"logistic_id": 90024, "enabled": True},
             {"logistic_id": 91006, "enabled": True}
         ]
     }
-    if img: payload["images"] = {"image_url_list": [img]}
-    r = chamar_api_shopee(path, payload)
-    if r: print(f"🧠 Item atualizado ({item_id})")
 
-def set_status_item(item_id, unlist):
+    if imagem and pd.notna(imagem):
+        payload["images"] = {
+            "image_url_list": [str(imagem)]
+        }
+
+    r = request_com_retry(url, payload)
+
+    if r:
+        print(f"🧠 Item atualizado ({item_id}) | Resposta: {r.text}")
+
+# ============================
+# INATIVAR
+# ============================
+def inativar_produto(item_id, access_token):
     path = "/api/v2/product/unlist_item"
-    payload = {"item_list": [{"item_id": int(item_id), "unlist": unlist}]}
-    chamar_api_shopee(path, payload)
+    url_base = "https://partner.shopeemobile.com"
 
-def normalizar_texto(texto):
-    if pd.isna(texto): return ""
-    return str(texto).strip().lower()
+    timestamp, sign = gerar_assinatura(path, access_token)
 
-def carregar_todos_do_supabase():
-    todos_registros = []
-    chunk_size = 1000
-    offset = 0
-    while True:
-        response = supabase.table("silver_products").select("*").range(offset, offset + chunk_size - 1).execute()
-        if not response.data: break
-        todos_registros.extend(response.data)
-        offset += chunk_size
-    return pd.DataFrame(todos_registros)
+    url = (
+        f"{url_base}{path}"
+        f"?partner_id={PARTNER_ID}"
+        f"&timestamp={timestamp}"
+        f"&sign={sign}"
+        f"&access_token={access_token}"
+        f"&shop_id={SHOP_ID}"
+    )
 
-def processar_produto(row):
+    payload = {
+        "item_list": [{"item_id": int(item_id), "unlist": True}]
+    }
+
+    r = request_com_retry(url, payload)
+    if r:
+        print(f"❌ Inativando {item_id} | Resposta: {r.text}")
+
+# ============================
+# ATIVAR
+# ============================
+def ativar_produto(item_id, access_token):
+    path = "/api/v2/product/unlist_item"
+    url_base = "https://partner.shopeemobile.com"
+
+    timestamp, sign = gerar_assinatura(path, access_token)
+
+    url = (
+        f"{url_base}{path}"
+        f"?partner_id={PARTNER_ID}"
+        f"&timestamp={timestamp}"
+        f"&sign={sign}"
+        f"&access_token={access_token}"
+        f"&shop_id={SHOP_ID}"
+    )
+
+    payload = {
+        "item_list": [
+            {
+                "item_id": int(item_id),
+                "unlist": False
+            }
+        ]
+    }
+
+    r = request_com_retry(url, payload)
+
+    if r:
+        print(f"✅ Ativando {item_id} | Resposta: {r.text}")
+
+# ============================
+# PROCESSAR PRODUTO INDIVIDUAL
+# ============================
+def processar_produto(row, access_token):
     try:
         item_id = int(row["ID do Produto"])
-        nome_csv = row["Nome do Produto"]
-        # Usa o nome oficial vindo do Supabase para atualizar a Shopee
-        nome_oficial = row.get("nome_produto", nome_csv)
-        preco = row.get("preco_venda")
-        descricao = row.get("descricao", "")
-        
-        coluna_imagem = next((col for col in row.index if col.lower() in ['imagem', 'image', 'url_imagem', 'img']), None)
-        imagem = row[coluna_imagem] if coluna_imagem and pd.notna(row[coluna_imagem]) else ""
-        
-        peso = row.get("peso", 0.1)
-        peso = float(peso) if pd.notna(peso) and peso > 0 else 0.1
+        nome = row["Nome do Produto"]
+        nome_novo = row.get("Nome do Produto Novo", nome)
+        preco = row.get("Preco")
+        descricao = row.get("Descricao", "")
+        imagem = row.get("Imagem", "")
+        peso = row.get("Peso", 0.1)
+
+        print(f"🔎 Processando: {nome} (ID: {item_id})")
 
         if pd.notna(preco):
-            print(f"🔎 Atualizando: {nome_oficial} (ID: {item_id})")
-            set_status_item(item_id, False)
-            atualizar_preco(item_id, preco)
-            atualizar_item_completo(item_id, nome_oficial, descricao, imagem, peso)
+            ativar_produto(item_id, access_token)
+            atualizar_preco(item_id, preco, access_token)
+            atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso, access_token)
         else:
-            print(f"❌ Inativando (sem preço): {item_id}")
-            set_status_item(item_id, True)
+            inativar_produto(item_id, access_token)
+            
     except Exception as e:
-        print(f"⚠️ Erro ao processar produto {item_id}: {e}")
+        print(f"⚠️ Erro ao processar produto ID {row.get('ID do Produto', 'Desconhecido')}: {e}")
 
+# ============================
+# SINCRONIZAÇÃO
+# ============================
 def sincronizar():
     print("\n📦 Lendo produtos_shopee.csv…")
     df_ids = pd.read_csv(CSV_PATH, encoding="utf-8-sig")
-    df_ids.columns = df_ids.columns.str.strip()
-    
-    # Normalização para garantir o match
-    df_ids['chave'] = df_ids['Nome do Produto'].apply(normalizar_texto)
 
-    print("📊 Carregando dados completos do Supabase (paginado)...")
-    df_silver = carregar_todos_do_supabase()
-    df_silver['chave'] = df_silver['nome_original'].apply(normalizar_texto) # Ajuste 'nome_original' para a coluna correta
+    df_ids.columns = (
+        df_ids.columns
+        .str.strip()
+        .str.replace('\ufeff', '')
+    )
 
-    df_final = df_ids.merge(df_silver, on="chave", how="left")
+    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
 
-    total_encontrados = df_final['preco_venda'].notna().sum()
+    df_silver = carregar_dados_atuais()
+    df_update = preparar_dados(df_silver)
+
+    df_final = df_ids.merge(
+        df_update,
+        left_on="Nome do Produto",
+        right_on="Nome Original",
+        how="left"
+    )
+
+    total_encontrados = df_final['Preco'].notna().sum()
     total_sem_preco = len(df_final) - total_encontrados
     print(f"\n🔗 ----------------------------------------")
     print(f"🔗 Total de produtos no CSV: {len(df_final)}")
-    print(f"🔗 Produtos encontrados na Silver (com preço/match): {total_encontrados}")
-    print(f"🔗 Produtos NÃO encontrados ou sem preço (serão inativados): {total_sem_preco}")
+    print(f"🔗 Produtos encontrados na base (com preço): {total_encontrados}")
+    print(f"🔗 Produtos sem preço (serão inativados): {total_sem_preco}")
     print(f"🔗 ----------------------------------------\n")
 
+    # Pega o token UMA ÚNICA VEZ antes de disparar as threads (evita conflito)
+    access_token = pegar_token()
+
+    # Reduzido para max_workers=2 para evitar estourar limite de taxa da API da Shopee no GitHub Actions
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(processar_produto, row) for _, row in df_final.iterrows()]
+        futures = []
+        for _, row in df_final.iterrows():
+            futures.append(
+                executor.submit(
+                    processar_produto,
+                    row,
+                    access_token
+                )
+            )
+
         for future in as_completed(futures):
             future.result()
 
-    print("🏁 Sincronização concluída!")
+    print("🏁 Sincronização concluída com sucesso!")
+
+def run():
+    sincronizar()
 
 if __name__ == "__main__":
-    sincronizar()
+    run()
