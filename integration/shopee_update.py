@@ -262,8 +262,47 @@ def processar_produto(row, access_token):
 # ============================
 # SINCRONIZAÇÃO
 # ============================
+# ============================
+# PROCESSAR PRODUTO INDIVIDUAL (COM DEBUG)
+# ============================
+def processar_produto(row, access_token):
+    try:
+        # Tenta achar a coluna de ID de forma dinâmica caso o nome varie
+        id_col = next((c for c in ['ID do Produto', 'id_produto', 'item_id', 'ID'] if c in row and pd.notna(row[c])), None)
+        if not id_col:
+            print(f"⚠️ Erro: Coluna de ID não encontrada na linha: {row}")
+            return
+            
+        item_id = int(row[id_col])
+        nome = row.get("Nome do Produto", "Desconhecido")
+        nome_novo = row.get("Nome do Produto Novo", nome)
+        preco = row.get("Preco")
+        descricao = row.get("Descricao", "")
+        imagem = row.get("Imagem", "")
+        peso = row.get("Peso", 0.1)
+
+        print(f"🔎 Processando: {nome} (ID: {item_id}) | Preço: {preco}")
+
+        if pd.notna(preco):
+            ativar_produto(item_id, access_token)
+            atualizar_preco(item_id, preco, access_token)
+            atualizar_item_completo(item_id, nome_novo, descricao, imagem, peso, access_token)
+        else:
+            print(f"⚠️ Produto {item_id} sem preço mapeado. Verifique se o nome no CSV bate com o Supabase.")
+            inativar_produto(item_id, access_token)
+            
+    except Exception as e:
+        print(f"❌ Erro crítico ao processar linha: {e}")
+
+# ============================
+# SINCRONIZAÇÃO (COM DEBUG DE MERGE)
+# ============================
 def sincronizar():
     print("\n📦 Lendo produtos_shopee.csv…")
+    if not os.path.exists(CSV_PATH):
+        print(f"❌ Erro crítico: Arquivo {CSV_PATH} não encontrado!")
+        return
+        
     df_ids = pd.read_csv(CSV_PATH, encoding="utf-8-sig")
 
     df_ids.columns = (
@@ -272,17 +311,29 @@ def sincronizar():
         .str.replace('\ufeff', '')
     )
 
-    print(f"➡ {len(df_ids)} produtos carregados do CSV.")
+    print(f"➡ {len(df_ids)} produtos carregados do CSV. Colunas: {list(df_ids.columns)}")
 
     df_silver = carregar_dados_atuais()
+    if df_silver.empty:
+        print("❌ A tabela 'silver_products' retornou vazia do Supabase!")
+        return
+
     df_update = preparar_dados(df_silver)
 
-    df_final = df_ids.merge(
-        df_update,
-        left_on="Nome do Produto",
-        right_on="Nome Original",
-        how="left"
-    )
+    # Normalizar strings para evitar falha no merge por diferença de maiúsculas/espaços
+    if "Nome do Produto" in df_ids.columns and "Nome Original" in df_update.columns:
+        df_ids["_match_key"] = df_ids["Nome do Produto"].astype(str).str.strip().str.lower()
+        df_update["_match_key"] = df_update["Nome Original"].astype(str).str.strip().str.lower()
+        
+        df_final = pd.merge(
+            df_ids,
+            df_update.drop(columns=["Nome Original"]),
+            left_on="_match_key",
+            right_on="_match_key",
+            how="left"
+        ).drop(columns=["_match_key"])
+    else:
+        df_final = df_ids.merge(df_update, left_on="Nome do Produto", right_on="Nome Original", how="left")
 
     total_encontrados = df_final['Preco'].notna().sum()
     total_sem_preco = len(df_final) - total_encontrados
@@ -292,21 +343,13 @@ def sincronizar():
     print(f"🔗 Produtos sem preço (serão inativados): {total_sem_preco}")
     print(f"🔗 ----------------------------------------\n")
 
-    # Pega o token UMA ÚNICA VEZ antes de disparar as threads (evita conflito)
+    if total_encontrados == 0:
+        print("⚠️ ALERTA: Nenhum produto deu 'match' entre o CSV e o Supabase! Verifique se os nomes dos produtos são idênticos.")
+
     access_token = pegar_token()
 
-    # Reduzido para max_workers=2 para evitar estourar limite de taxa da API da Shopee no GitHub Actions
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = []
-        for _, row in df_final.iterrows():
-            futures.append(
-                executor.submit(
-                    processar_produto,
-                    row,
-                    access_token
-                )
-            )
-
+        futures = [executor.submit(processar_produto, row, access_token) for _, row in df_final.iterrows()]
         for future in as_completed(futures):
             future.result()
 
