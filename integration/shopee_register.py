@@ -243,12 +243,20 @@ def criar_produto(row):
     if not image_id:
         return None
 
+    # Validação segura do preço para evitar NaN / float inválido no JSON
+    preco = row.get("preco_venda")
+    if pd.isna(preco) or float(preco) <= 0:
+        print("❌ Preço de venda inválido ou ausente.")
+        return None
+    preco = round(float(preco), 2)
+
+    # Validação segura do peso
     peso = row.get("peso", 0.2)
     try:
         peso = float(peso)
+        if pd.isna(peso) or peso < 0.1:
+            peso = 0.2
     except:
-        peso = 0.2
-    if peso < 0.1:
         peso = 0.2
 
     descricao = row.get("descricao")
@@ -259,8 +267,9 @@ def criar_produto(row):
         "item_name": str(row["nome"])[:120],
         "description": str(descricao)[:3000],
         "category_id": escolher_categoria_por_subcategoria(row.get("subcategoria")),
-        "original_price": round(float(row["preco_venda"]), 2),
+        "original_price": preco,
         "weight": peso,
+        "condition": "NEW",  # Obrigatório pela API da Shopee
         "dimension": {"package_length": 10, "package_width": 10, "package_height": 10},
         "seller_stock": [{"stock": ESTOQUE_PADRAO}],
         "brand": {"brand_id": 0, "original_brand_name": MARCA_PADRAO},
@@ -319,9 +328,6 @@ def salvar_produto_csv(item_id, nome):
 # ==================================================
 # EXECUÇÃO PRINCIPAL DO CADASTRO
 # ==================================================
-def cadastrar_novos_produtos(): # Mantido sem espaço no nome real na função abaixo
-    pass
-
 def cadastrar_novos_produtos():
     print("\n🚀 Iniciando rotina de cadastro de novos produtos via Supabase...")
     df_novos = carregar_produtos_novos()
