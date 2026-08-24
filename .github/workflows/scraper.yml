@@ -24,6 +24,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Executar Inativação de Produtos Ausentes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
+        run: python integration/inativar_produtos.py
+
       - name: 1. Executar Scraper (Ingestão para o Supabase)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -49,22 +56,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python processing/enrich_products.py
 
-      - name: 5. Cadastrar Novos Produtos na Shopee
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python integration/shopee_register.py
-
-      - name: 6. Atualizar Preços e Estoques (Shopee Update)
+      - name: 5. Atualizar Preços e Estoques (Shopee Update)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
         run: python integration/shopee_update.py
-
-      - name: 7. Salvar Alterações do CSV de Controle
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "bot@users.noreply.github.com"
-          git add integration/produtos_shopee.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: Atualiza CSV de controle com novos produtos cadastrados [skip ci]" && git push)
