@@ -22,10 +22,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install pandas requests supabase pyarrow
 
-      - name: Executar Sincronização Shopee
+      - name: Executar Cadastro de Novos Produtos
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          # Certifique-se de que o token esteja nos Secrets do repositório
+          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
+        run: python integration/shopee_register.py
+
+      - name: Executar Sincronização Shopee (Preços e Estoques)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
         run: python integration/shopee_update.py
+
+      - name: Salvar Alterações do CSV de Controle
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          git add integration/produtos_shopee.csv
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: Atualiza CSV de controle com novos produtos cadastrados [skip ci]" && git push)
