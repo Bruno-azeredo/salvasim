@@ -9,7 +9,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def run():
-    print("🚀 Buscando dados no Supabase para análise de queda de preço...")
+    print("🚀 Buscando dados no Supabase para alinhar com o dashboard...")
 
     # 1. Busca dados da tabela
     response = supabase.table("produtos_atacadao").select("*").execute()
@@ -45,51 +45,58 @@ def run():
         print("❌ Nenhum produto com preço válido foi encontrado após a limpeza.")
         return
 
-    # Garante ordenação cronológica correta
+    # Garante ordenação cronológica correta por produto e data
     df["data_extracao"] = pd.to_datetime(df["data_extracao"], errors="coerce")
     df = df.sort_values(by=["link", "data_extracao"])
 
-    # Calcula o preço médio histórico e o maior preço registrado por produto para servir de referência de queda
-    df["preco_medio"] = df.groupby("link")["preco"].transform("mean")
-    df["preco_maximo"] = df.groupby("link")["preco"].transform("max")
+    # Pega o preço anterior (o valor imediatamente antes da última coleta para o mesmo produto)
+    df["preco_anterior"] = df.groupby("link")["preco"].shift(1)
 
-    # Pega estritamente a última coleta de cada produto
-    ultima_coleta = df.sort_values("data_extracao").groupby("link").tail(1).copy()
-    
-    # Foco total em Queda de Preço:
-    # 1. Diferença absoluta em dinheiro (quanto mais caiu em R$, maior a prioridade)
-    # 2. Desconto percentual em relação ao preço máximo/médio
-    ultima_coleta["queda_absoluta"] = ultima_coleta["preco_maximo"] - ultima_coleta["preco"]
-    ultima_coleta["queda_percentual"] = ((ultima_coleta["preco_maximo"] - ultima_coleta["preco"]) / ultima_coleta["preco_maximo"]) * 100
+    # Filtra apenas linhas que possuem um preço anterior válido para comparar
+    df_validos = df.dropna(subset=["preco_anterior"]).copy()
 
-    # Seleciona as 5 maiores quedas absolutas e percentuais
-    top_5 = ultima_coleta.sort_values(by=["queda_absoluta", "queda_percentual"], ascending=False).head(5)
-
-    if top_5.empty:
-        print("❌ Não foi possível calcular o ranking de quedas.")
+    if df_validos.empty:
+        print("❌ Não há histórico suficiente para comparar preços anteriores.")
         return
 
-    print(f"\n🔥 Top 5 maiores quedas de preço selecionadas! Gerando prompts:\n" + "="*50)
+    # Pega estritamente a última coleta de cada produto
+    ultima_coleta = df_validos.sort_values("data_extracao").groupby("link").tail(1).copy()
+    
+    # Calcula a variação exata idêntica à do dashboard
+    ultima_coleta["variacao_pct"] = ((ultima_coleta["preco"] - ultima_coleta["preco_anterior"]) / ultima_coleta["preco_anterior"]) * 100
+
+    # Ordena pelas maiores quedas percentuais
+    top_5 = ultima_coleta.sort_values(by="variacao_pct", ascending=True).head(5)
+
+    if top_5.empty:
+        print("❌ Não foi possível calcular o ranking.")
+        return
+
+    print(f"\n🔥 Top 5 maiores quedas alinhadas com o Dashboard! Gerando prompts com URLs:\n" + "="*50)
 
     pos = 1
     for _, produto in top_5.iterrows():
         nome_produto = produto.get("nome", "Produto")
         preco_atual = produto.get("preco", 0.0)
-        preco_anterior = produto.get("preco_maximo", preco_atual)
-        economia = produto.get("queda_absoluta", 0.0)
+        preco_anterior = produto.get("preco_anterior", 0.0)
+        variacao = produto.get("variacao_pct", 0.0)
         
-        # Monta o prompt rico focado na queda de preço
+        # Pega a URL da imagem (substitua 'imagem' pelo nome real da sua coluna no banco se for diferente)
+        url_imagem = produto.get("imagem", "URL não disponível")
+        
+        # Monta o prompt incluindo a referência da imagem
         prompt_gerado = (
             f"Flyer publicitário profissional de supermercado no estilo 3D vibrante, "
             f"com fundo azul dinâmico, elementos de porcentagem e ícones de comércio. "
-            f"Em destaque central, exiba o produto: {nome_produto}. "
+            f"Em destaque central, exiba o produto: {nome_produto} (com base na referência visual da imagem: {url_imagem}). "
             f"Inclua letreiros chamativos com o preço promocional de R$ {preco_atual:.2f} "
-            f"(antes custava R$ {preco_anterior:.2f}, economia de R$ {economia:.2f}). "
+            f"(antes custava R$ {preco_anterior:.2f}, queda de {variacao:.2f}%). "
             f"Design moderno, cores azul e vermelho, iluminação de estúdio, alta qualidade comercial."
         )
         
-        print(f"\n[QUEDA {pos}] - Produto: {nome_produto}")
-        print(f"Preço Anterior: R$ {preco_anterior:.2f} | Preço Atual: R$ {preco_atual:.2f} | Economia: R$ {economia:.2f}")
+        print(f"\n[OFERTA {pos}] - Produto: {nome_produto}")
+        print(f"Preço Anterior: R$ {preco_anterior:.2f} | Preço Atual: R$ {preco_atual:.2f} | Variação: {variacao:.2f}%")
+        print(f"🖼️ URL da Imagem: {url_imagem}")
         print(prompt_gerado)
         print("-" * 50)
         pos += 1
