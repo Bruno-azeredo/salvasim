@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from supabase import create_client
+import re
 
 # =====================================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -101,7 +102,7 @@ def load_data():
     except Exception:
         data["monitor"] = pd.DataFrame()
 
-    # Conversão de datas e limpeza de colunas numéricas em todos os dataframes
+    # Conversão de datas e limpeza robusta de colunas numéricas
     cols_numericas = ["preco", "preco_anterior", "preco_medio", "menor_preco", "variacao_pct", "abaixo_media_pct", "score"]
     
     for key in data:
@@ -109,18 +110,34 @@ def load_data():
             if "data_extracao" in data[key].columns:
                 data[key]["data_extracao"] = pd.to_datetime(data[key]["data_extracao"])
             
-            # Limpa e converte colunas numéricas caso existam no dataframe
             for col in cols_numericas:
                 if col in data[key].columns:
-                    data[key][col] = (
-                        data[key][col]
-                        .astype(str)
-                        .str.replace("R$", "", regex=False)
-                        .str.replace(" ", "", regex=False)
-                        .str.replace(".", "", regex=False)
-                        .str.replace(",", ".", regex=False)
-                    )
-                    data[key][col] = pd.to_numeric(data[key][col], errors="coerce")
+                    # Função para extrair o primeiro preço válido caso venha repetido/concatenado
+                    def limpar_preco(val):
+                        if pd.isna(val):
+                            return None
+                        val_str = str(val)
+                        # Procura por padrão de número monetário (ex: 12,90 ou 1.234,56)
+                        match = re.search(r'([\d\.]+,\d{2})', val_str)
+                        if match:
+                            num_str = match.group(1).replace(".", "").replace(",", ".")
+                            try:
+                                return float(num_str)
+                            except ValueError:
+                                pass
+                        # Fallback de limpeza padrão caso o regex não pegue
+                        clean_str = (
+                            val_str.replace("R$", "")
+                            .replace(" ", "")
+                            .replace(".", "")
+                            .replace(",", ".")
+                        )
+                        try:
+                            return float(clean_str)
+                        except ValueError:
+                            return None
+
+                    data[key][col] = data[key][col].apply(limpar_preco)
 
     return data
 
