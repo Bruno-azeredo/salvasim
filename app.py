@@ -57,35 +57,50 @@ supabase = init_supabase()
 # =====================================================
 # CARREGAMENTO COM CACHE (DIRETO DO SUPABASE)
 # =====================================================
+# =====================================================
+# CARREGAMENTO COM CACHE E PAGINAÇÃO (SUPABASE > 1000 LINHAS)
+# =====================================================
 @st.cache_data(ttl=600)
 def load_data():
     data = {}
     
+    def fetch_all_rows(table_name):
+        """Busca todas as linhas de uma tabela do Supabase paginando de 1000 em 1000"""
+        rows = []
+        limit = 1000
+        offset = 0
+        while True:
+            try:
+                res = supabase.table(table_name).select("*").range(offset, offset + limit - 1).execute()
+                if not res.data:
+                    break
+                rows.extend(res.data)
+                if len(res.data) < limit:
+                    break
+                offset += limit
+            except Exception as e:
+                print(f"Erro ao buscar {table_name}: {e}")
+                break
+        return rows
+
+    # Carrega cada tabela usando a paginação para burlar o limite de 1000
     try:
-        # Busca o Ranking de Oportunidades
-        res_ranking = supabase.table("gold_ranking").select("*").execute()
-        data["ranking"] = pd.DataFrame(res_ranking.data)
+        data["ranking"] = pd.DataFrame(fetch_all_rows("gold_ranking"))
     except Exception:
         data["ranking"] = pd.DataFrame()
 
     try:
-        # Busca Oportunidades
-        res_oportunidades = supabase.table("gold_oportunidades").select("*").execute()
-        data["oportunidades"] = pd.DataFrame(res_oportunidades.data)
+        data["oportunidades"] = pd.DataFrame(fetch_all_rows("gold_oportunidades"))
     except Exception:
         data["oportunidades"] = pd.DataFrame()
 
     try:
-        # Busca Alertas Diários
-        res_alertas = supabase.table("gold_alertas").select("*").execute()
-        data["alertas"] = pd.DataFrame(res_alertas.data)
+        data["alertas"] = pd.DataFrame(fetch_all_rows("gold_alertas"))
     except Exception:
         data["alertas"] = pd.DataFrame()
 
     try:
-        # Busca o Monitor Histórico direto da tabela produtos_atacadao
-        res_monitor = supabase.table("produtos_atacadao").select("*").execute()
-        data["monitor"] = pd.DataFrame(res_monitor.data)
+        data["monitor"] = pd.DataFrame(fetch_all_rows("produtos_atacadao"))
     except Exception:
         data["monitor"] = pd.DataFrame()
 
