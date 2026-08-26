@@ -55,9 +55,6 @@ def init_supabase():
 supabase = init_supabase()
 
 # =====================================================
-# CARREGAMENTO COM CACHE (DIRETO DO SUPABASE)
-# =====================================================
-# =====================================================
 # CARREGAMENTO COM CACHE E PAGINAÇÃO (SUPABASE > 1000 LINHAS)
 # =====================================================
 @st.cache_data(ttl=600)
@@ -104,10 +101,26 @@ def load_data():
     except Exception:
         data["monitor"] = pd.DataFrame()
 
-    # Conversão de datas para o formato datetime do Pandas
+    # Conversão de datas e limpeza de colunas numéricas em todos os dataframes
+    cols_numericas = ["preco", "preco_anterior", "preco_medio", "menor_preco", "variacao_pct", "abaixo_media_pct", "score"]
+    
     for key in data:
-        if not data[key].empty and "data_extracao" in data[key].columns:
-            data[key]["data_extracao"] = pd.to_datetime(data[key]["data_extracao"])
+        if not data[key].empty:
+            if "data_extracao" in data[key].columns:
+                data[key]["data_extracao"] = pd.to_datetime(data[key]["data_extracao"])
+            
+            # Limpa e converte colunas numéricas caso existam no dataframe
+            for col in cols_numericas:
+                if col in data[key].columns:
+                    data[key][col] = (
+                        data[key][col]
+                        .astype(str)
+                        .str.replace("R$", "", regex=False)
+                        .str.replace(" ", "", regex=False)
+                        .str.replace(".", "", regex=False)
+                        .str.replace(",", ".", regex=False)
+                    )
+                    data[key][col] = pd.to_numeric(data[key][col], errors="coerce")
 
     return data
 
