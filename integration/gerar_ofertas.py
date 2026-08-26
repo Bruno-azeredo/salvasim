@@ -9,7 +9,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def run():
-    print("🚀 Buscando as 5 melhores ofertas no Supabase...")
+    print("🚀 Buscando dados no Supabase para análise de queda de preço...")
 
     # 1. Busca dados da tabela
     response = supabase.table("produtos_atacadao").select("*").execute()
@@ -45,48 +45,56 @@ def run():
         print("❌ Nenhum produto com preço válido foi encontrado após a limpeza.")
         return
 
-    # Ordena e calcula métricas
+    # Garante ordenação cronológica correta
+    df["data_extracao"] = pd.to_datetime(df["data_extracao"], errors="coerce")
     df = df.sort_values(by=["link", "data_extracao"])
-    df["menor_preco"] = df.groupby("link")["preco"].transform("min")
+
+    # Calcula o preço médio histórico e o maior preço registrado por produto para servir de referência de queda
     df["preco_medio"] = df.groupby("link")["preco"].transform("mean")
-    
-    # Pega a última coleta de cada produto
+    df["preco_maximo"] = df.groupby("link")["preco"].transform("max")
+
+    # Pega estritamente a última coleta de cada produto
     ultima_coleta = df.sort_values("data_extracao").groupby("link").tail(1).copy()
     
-    # Calcula score de oportunidade (desconto percentual)
-    ultima_coleta["score"] = ((ultima_coleta["preco_medio"] - ultima_coleta["preco"]) / ultima_coleta["preco_medio"]) * 100
-    
-    # Seleciona as 5 melhores ofertas
-    top_5 = ultima_coleta.sort_values(by="score", ascending=False).head(5)
+    # Foco total em Queda de Preço:
+    # 1. Diferença absoluta em dinheiro (quanto mais caiu em R$, maior a prioridade)
+    # 2. Desconto percentual em relação ao preço máximo/médio
+    ultima_coleta["queda_absoluta"] = ultima_coleta["preco_maximo"] - ultima_coleta["preco"]
+    ultima_coleta["queda_percentual"] = ((ultima_coleta["preco_maximo"] - ultima_coleta["preco"]) / ultima_coleta["preco_maximo"]) * 100
+
+    # Seleciona as 5 maiores quedas absolutas e percentuais
+    top_5 = ultima_coleta.sort_values(by=["queda_absoluta", "queda_percentual"], ascending=False).head(5)
 
     if top_5.empty:
-        print("❌ Não foi possível calcular o ranking das ofertas.")
+        print("❌ Não foi possível calcular o ranking de quedas.")
         return
 
-    print(f"\n🔥 Top 5 ofertas selecionadas! Gerando prompts detalhados:\n" + "="*50)
+    print(f"\n🔥 Top 5 maiores quedas de preço selecionadas! Gerando prompts:\n" + "="*50)
 
     pos = 1
     for _, produto in top_5.iterrows():
         nome_produto = produto.get("nome", "Produto")
-        preco_produto = produto.get("preco", 0.0)
-        preco_medio = produto.get("preco_medio", 0.0)
+        preco_atual = produto.get("preco", 0.0)
+        preco_anterior = produto.get("preco_maximo", preco_atual)
+        economia = produto.get("queda_absoluta", 0.0)
         
-        # Monta o prompt rico para a criação manual da imagem
+        # Monta o prompt rico focado na queda de preço
         prompt_gerado = (
             f"Flyer publicitário profissional de supermercado no estilo 3D vibrante, "
             f"com fundo azul dinâmico, elementos de porcentagem e ícones de comércio. "
             f"Em destaque central, exiba o produto: {nome_produto}. "
-            f"Inclua letreiros chamativos com o preço promocional de R$ {preco_produto:.2f} "
-            f"(comparado ao preço médio anterior de R$ {preco_medio:.2f}). "
+            f"Inclua letreiros chamativos com o preço promocional de R$ {preco_atual:.2f} "
+            f"(antes custava R$ {preco_anterior:.2f}, economia de R$ {economia:.2f}). "
             f"Design moderno, cores azul e vermelho, iluminação de estúdio, alta qualidade comercial."
         )
         
-        print(f"\n[PROMPT {pos}] - Produto: {nome_produto}")
+        print(f"\n[QUEDA {pos}] - Produto: {nome_produto}")
+        print(f"Preço Anterior: R$ {preco_anterior:.2f} | Preço Atual: R$ {preco_atual:.2f} | Economia: R$ {economia:.2f}")
         print(prompt_gerado)
         print("-" * 50)
         pos += 1
 
-    print("\n🏁 Processo de geração de prompts concluído com sucesso!")
+    print("\n🏁 Processo concluído com sucesso!")
 
 if __name__ == "__main__":
     run()
