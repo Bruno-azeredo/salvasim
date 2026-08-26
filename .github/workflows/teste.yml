@@ -22,6 +22,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install pandas requests supabase pyarrow
 
+      - name: Excluir Produtos Inativos há mais de 30 dias
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
+        run: python integration/excluir_produtos_antigos.py
+
       - name: Executar Cadastro de Novos Produtos
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
