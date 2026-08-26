@@ -9,11 +9,27 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def run():
-    print("🚀 Buscando dados no Supabase para alinhar com o dashboard...")
+    print("🚀 Buscando dados completos no Supabase (com paginação)...")
 
-    # 1. Busca dados da tabela
-    response = supabase.table("produtos_atacadao").select("*").execute()
-    dados = response.data
+    # 1. Busca dados da tabela em lotes para contornar o limite de 1000 linhas da API
+    dados = []
+    chunk_size = 1000
+    start = 0
+
+    while True:
+        response = supabase.table("produtos_atacadao").select("*").range(start, start + chunk_size - 1).execute()
+        lote = response.data
+        
+        if not lote:
+            break
+            
+        dados.extend(lote)
+        if len(lote) < chunk_size:
+            break
+            
+        start += chunk_size
+
+    print(f"📊 Total de registros carregados do banco: {len(dados)}")
 
     if not dados:
         print("❌ Nenhum dado encontrado na tabela produtos_atacadao.")
@@ -47,7 +63,7 @@ def run():
 
     # Garante ordenação cronológica correta por produto e data
     df["data_extracao"] = pd.to_datetime(df["data_extracao"], errors="coerce")
-    df = df.sort_values(by=["link", "data_extracao"])
+    df = df.sort_values(by=["link", "data_extracao"], ascending=[True, True])
 
     # Pega o preço anterior (o valor imediatamente antes da última coleta para o mesmo produto)
     df["preco_anterior"] = df.groupby("link")["preco"].shift(1)
