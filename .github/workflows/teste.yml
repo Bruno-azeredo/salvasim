@@ -22,36 +22,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Excluir Produtos Inativos há mais de 30 dias
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
-        run: python integration/excluir_produtos_antigos.py
-
       - name: Gerar Imagens Promocionais das Top Ofertas
         run: python integration/gerar_ofertas.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
-      - name: Executar Cadastro de Novos Produtos
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
-        run: python integration/shopee_register.py
-
-      - name: Executar Sincronização Shopee (Preços e Estoques)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
-        run: python integration/shopee_update.py
-
-      - name: Salvar Alterações do CSV de Controle
+      - name: Commit e push das imagens geradas
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "bot@users.noreply.github.com"
-          git add integration/produtos_shopee.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: Atualiza CSV de controle com novos produtos cadastrados [skip ci]" && git push)
+            git config --global user.name "GitHub Action Bot"
+            git config --global user.email "bot@github.com"
+            git add ofertas_geradas/
+            git diff --quiet && git diff --staged --quiet || (git commit -m "feat: atualiza imagens promocionais automáticas" && git push)
