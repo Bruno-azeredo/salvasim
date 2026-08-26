@@ -100,8 +100,32 @@ def run():
 
     df = pd.DataFrame(dados)
 
-    # Limpeza e conversão de preço
-    df["preco"] = df["preco"].astype(str).str.replace("R$", "", regex=True).str.replace(".", "", regex=True).str.replace(",", ".").astype(float)
+    if df.empty or "preco" not in df.columns:
+        print("❌ A tabela está vazia ou não possui a coluna 'preco'.")
+        return
+
+    # Função de limpeza robusta para evitar erro ao converter para float
+    def limpar_preco(val):
+        if pd.isna(val) or val == "" or val is None:
+            return 0.0
+        val_str = str(val).replace("R$", "").replace(" ", "").strip()
+        if not val_str:
+            return 0.0
+        # Troca ponto de milhar por vazio e vírgula decimal por ponto
+        val_str = val_str.replace(".", "").replace(",", ".")
+        try:
+            return float(val_str)
+        except ValueError:
+            return 0.0
+
+    df["preco"] = df["preco"].apply(limpar_preco)
+
+    # Remove produtos com preço zero ou inválido
+    df = df[df["preco"] > 0]
+
+    if df.empty:
+        print("❌ Nenhum produto com preço válido foi encontrado após a limpeza.")
+        return
 
     # Ordena e calcula métricas idênticas à aplicação Streamlit
     df = df.sort_values(by=["link", "data_extracao"])
@@ -116,6 +140,10 @@ def run():
     
     # Seleciona as 5 melhores ofertas (maior score / maior desconto percentual)
     top_5 = ultima_coleta.sort_values(by="score", ascending=False).head(5)
+
+    if top_5.empty:
+        print("❌ Não foi possível calcular o ranking das ofertas.")
+        return
 
     print(f"🔥 Top 5 ofertas selecionadas! Gerando artes promocionais...")
 
