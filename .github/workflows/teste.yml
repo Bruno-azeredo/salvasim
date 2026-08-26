@@ -27,10 +27,3 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-
-      - name: Commit e push das imagens geradas
-        run: |
-            git config --global user.name "GitHub Action Bot"
-            git config --global user.email "bot@github.com"
-            git add ofertas_geradas/
-            git diff --quiet && git diff --staged --quiet || (git commit -m "feat: atualiza imagens promocionais automáticas" && git push)
