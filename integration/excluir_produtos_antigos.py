@@ -28,7 +28,7 @@ def sign_api(path):
     return ts, sign
 
 def buscar_todos_itens_shopee(item_status="UNLIST"):
-    """Busca todos os itens inativos (UNLIST) diretamente da Shopee em lote"""
+    """Busca todos os itens inativos (UNLIST) diretamente da Shopee com paginação completa"""
     path = "/api/v2/product/get_item_list"
     ts, sign = sign_api(path)
     
@@ -36,6 +36,8 @@ def buscar_todos_itens_shopee(item_status="UNLIST"):
 
     itens_inativos = []
     offset = 0
+    
+    print("🔄 Baixando lista completa de produtos inativos da Shopee...", flush=True)
     
     while True:
         p_url = f"{url}&offset={offset}"
@@ -49,19 +51,31 @@ def buscar_todos_itens_shopee(item_status="UNLIST"):
             response_data = resp.get("response", {})
             item_list = response_data.get("item", [])
             
+            if not item_list:
+                break
+                
             for item in item_list:
                 itens_inativos.append(item.get("item_id"))
                 
-            if not response_data.get("has_next", False):
+            # Verifica se há mais páginas
+            has_next = response_data.get("has_next", False)
+            if not has_next:
                 break
                 
-            offset = response_data.get("next_offset", offset + 50)
+            # Atualiza o offset com base no retorno ou somando 50
+            next_offset = response_data.get("next_offset")
+            if next_offset is not None:
+                offset = next_offset
+            else:
+                offset += 50
+                
             time.sleep(0.2)
         except Exception as e:
             print(f"⚠️ Erro de conexão ao paginar itens: {e}", flush=True)
             break
             
-        if offset > 2000: # Proteção contra loop infinito
+        # Proteção estendida para suportar mais de 2000 itens se necessário
+        if offset > 5000: 
             break
             
     return itens_inativos
