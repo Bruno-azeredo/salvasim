@@ -27,17 +27,17 @@ def sign_api(path):
     sign = hmac.new(PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
     return ts, sign
 
-def buscar_todos_itens_shopee(item_status="UNLIST"):
-    """Busca todos os itens inativos (UNLIST) diretamente da Shopee com paginação completa"""
-    path = "/api/v2/product/get_item_list"
+def buscar_todos_ids_inativos():
+    """Busca todos os IDs inativos (UNLIST) usando o search_item da Shopee"""
+    path = "/api/v2/product/search_item"
     ts, sign = sign_api(path)
     
-    url = f"{BASE_URL}{path}?partner_id={PARTNER_ID}&timestamp={ts}&sign={sign}&access_token={ACCESS_TOKEN}&shop_id={SHOP_ID}&page_size=50&item_status={item_status}"
+    url = f"{BASE_URL}{path}?partner_id={PARTNER_ID}&timestamp={ts}&sign={sign}&access_token={ACCESS_TOKEN}&shop_id={SHOP_ID}&page_size=50&item_status=UNLIST"
 
-    itens_inativos = []
-    offset = 0
+    ids_inativos = []
+    offset = "0"
     
-    print("🔄 Baixando lista completa de produtos inativos da Shopee...", flush=True)
+    print("🔄 Varrendo lista completa de produtos inativos na Shopee...", flush=True)
     
     while True:
         p_url = f"{url}&offset={offset}"
@@ -45,47 +45,36 @@ def buscar_todos_itens_shopee(item_status="UNLIST"):
             r = requests.get(p_url, timeout=20)
             resp = r.json()
             if resp.get("error"):
-                print(f"⚠️ Erro ao buscar lista da Shopee: {resp.get('message')}", flush=True)
+                print(f"⚠️ Erro na busca da Shopee: {resp.get('message')}", flush=True)
                 break
                 
             response_data = resp.get("response", {})
-            item_list = response_data.get("item", [])
+            item_id_list = response_data.get("item_id_list", [])
             
-            if not item_list:
+            if not item_id_list:
                 break
                 
-            for item in item_list:
-                itens_inativos.append(item.get("item_id"))
+            for item_id in item_id_list:
+                ids_inativos.append(item_id)
                 
-            # Verifica se há mais páginas
-            has_next = response_data.get("has_next", False)
-            if not has_next:
-                break
-                
-            # Atualiza o offset com base no retorno ou somando 50
+            # Verifica se há próxima página
             next_offset = response_data.get("next_offset")
-            if next_offset is not None:
-                offset = next_offset
-            else:
-                offset += 50
+            if not next_offset:
+                break
                 
+            offset = str(next_offset)
             time.sleep(0.2)
         except Exception as e:
-            print(f"⚠️ Erro de conexão ao paginar itens: {e}", flush=True)
+            print(f"⚠️ Erro de conexão ao buscar itens: {e}", flush=True)
             break
             
-        # Proteção estendida para suportar mais de 2000 itens se necessário
-        if offset > 5000: 
-            break
-            
-    return itens_inativos
+    return ids_inativos
 
 def consultar_detalhes_lote(item_ids):
     """Consulta detalhes de até 50 itens de uma única vez"""
     path = "/api/v2/product/get_item_base_info"
     ts, sign = sign_api(path)
     
-    # Formata a lista de IDs para a query string
     ids_str = ",".join(map(str, item_ids))
     url = f"{BASE_URL}{path}?partner_id={PARTNER_ID}&timestamp={ts}&sign={sign}&access_token={ACCESS_TOKEN}&shop_id={SHOP_ID}&item_id_list={ids_str}"
 
@@ -119,7 +108,7 @@ def excluir_item_shopee(item_id):
         return False
 
 def limpar_produtos_inativos_antigos():
-    print("\n🧹 Buscando produtos inativos diretamente na Shopee...", flush=True)
+    print("\n🧹 Iniciando verificação de produtos inativos...", flush=True)
 
     if not os.path.exists(CSV_PATH):
         print("⚠️ Arquivo de controle 'produtos_shopee.csv' não encontrado.", flush=True)
@@ -135,8 +124,8 @@ def limpar_produtos_inativos_antigos():
         print("❌ Coluna de ID não encontrada no CSV.", flush=True)
         return
 
-    # Pega todos os IDs que estão inativos (UNLIST) lá na Shopee de forma ultra rápida
-    ids_inativos = buscar_todos_itens_shopee("UNLIST")
+    # Pega todos os IDs inativos reais da loja com paginação correta
+    ids_inativos = buscar_todos_ids_inativos()
     print(f"📦 Total de produtos inativos encontrados na Shopee: {len(ids_inativos)}", flush=True)
 
     if not ids_inativos:
@@ -146,8 +135,9 @@ def limpar_produtos_inativos_antigos():
     agora = datetime.now(timezone.utc)
     limite_um_mes = agora - timedelta(days=30)
     ids_para_remover = []
+    excluidos_count = 0
 
-    # Divide os IDs em blocos de 50 (limite da API da Shopee para lotes)
+    # Processa em lotes de 50 para checar a data de atualização de cada um
     for i in range(0, len(ids_inativos), 50):
         lote = ids_inativos[i:i+50]
         detalhes = consultar_detalhes_lote(lote)
@@ -161,7 +151,6 @@ def limpar_produtos_inativos_antigos():
                 
                 # Se está inativo há mais de 30 dias
                 if data_atualizacao < limite_um_mes:
-                    # Acha o nome no CSV para logar bonito
                     match = df_shopee[df_shopee[col_id].astype(str) == str(item_id)]
                     nome = match.iloc[0][col_nome] if not match.empty else f"ID {item_id}"
                     
@@ -170,16 +159,17 @@ def limpar_produtos_inativos_antigos():
                     if excluir_item_shopee(item_id):
                         print(f"✅ Excluído com sucesso.", flush=True)
                         ids_para_remover.append(item_id)
+                        excluidos_count += 1
         
-        time.sleep(0.5)
+        time.sleep(0.3)
 
     # Remove do CSV de controle local
     if ids_para_remover:
         df_shopee = df_shopee[~df_shopee[col_id].astype(str).isin(map(str, ids_para_remover))]
         df_shopee.to_csv(CSV_PATH, index=False)
-        print(f"✨ {len(ids_para_remover)} produtos antigos foram excluídos e removidos do CSV.", flush=True)
+        print(f"✨ {excluidos_count} produtos antigos foram excluídos e removidos do CSV.", flush=True)
     else:
-        print("✨ Nenhum produto inativo atingiu o limite de 1 mês.", flush=True)
+        print("✨ Nenhum dos produtos inativos atingiu o limite de 1 mês ainda.", flush=True)
 
 if __name__ == "__main__":
     limpar_produtos_inativos_antigos()
