@@ -284,7 +284,7 @@ def criar_produto(row):
             "diff_state_cfop": "6102",
             "csosn": "102",
             "origin": "0",
-            "cest": "",
+            "cest": "00",
             "measure_unit": "UN"
         },
         "gtin_code": "00"
