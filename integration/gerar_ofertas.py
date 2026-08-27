@@ -97,8 +97,8 @@ def run():
         preco_anterior = produto.get("preco_anterior", 0.0)
         variacao = produto.get("variacao_pct", 0.0)
         
-        # Pega a URL da imagem (substitua 'imagem' pelo nome real da sua coluna no banco se for diferente)
-        url_imagem = produto.get("imagem", "URL não disponível")
+        # Pega a URL da imagem usando a coluna correta 'imagem_url'
+        url_imagem = produto.get("imagem_url", "URL não disponível")
         
         # Monta o prompt incluindo a referência da imagem
         prompt_gerado = (
