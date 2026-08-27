@@ -312,7 +312,7 @@ def sincronizar():
 
     access_token = pegar_token()
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(processar_produto, row, access_token) for _, row in df_final.iterrows()]
         for future in as_completed(futures):
             future.result()

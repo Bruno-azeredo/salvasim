@@ -18,7 +18,7 @@ from supabase import create_client
 warnings.filterwarnings("ignore")
 
 CHROMEDRIVER = ChromeDriverManager().install()
-MAX_WORKERS = 10
+MAX_WORKERS = 2
 
 # ===========================
 # DRIVER
