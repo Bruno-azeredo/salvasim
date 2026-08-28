@@ -18,7 +18,7 @@ from supabase import create_client
 warnings.filterwarnings("ignore")
 
 CHROMEDRIVER = ChromeDriverManager().install()
-MAX_WORKERS = 2
+MAX_WORKERS = 10
 
 # ===========================
 # DRIVER
@@ -39,45 +39,60 @@ def criar_driver():
     return driver
 
 # ===========================
-# CONFIGURAR CEP
+# CONFIGURAR CEP (Com Validação de Loja)
 # ===========================
 
 def configurar_cep(driver):
-    try:
-        cep_atual = WebDriverWait(driver, 30).until(
-            EC.element_to_be_clickable((By.XPATH, '//span[@data-test-id="regionalization-bar-desktop-cep"]'))
-        )
-        driver.execute_script("arguments[0].click();", cep_atual)
-
+    tentativas_cep = 3
+    for tentativa in range(tentativas_cep):
         try:
-            entrega = WebDriverWait(driver, 30).until(
-                EC.element_to_be_clickable((By.XPATH, '//button[.//h2[contains(normalize-space(),"Entrega em Casa")]]'))
+            cep_atual = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable((By.XPATH, '//span[@data-test-id="regionalization-bar-desktop-cep"]'))
             )
-            driver.execute_script("arguments[0].click();", entrega)
-        except TimeoutException:
-            pass
+            driver.execute_script("arguments[0].click();", cep_atual)
 
-        input_cep = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.ID, "location-search")))
-        input_cep.clear()
-        input_cep.send_keys("06855-400")
+            try:
+                entrega = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[.//h2[contains(normalize-space(),"Entrega em Casa")]]'))
+                )
+                driver.execute_script("arguments[0].click();", entrega)
+            except TimeoutException:
+                pass
 
-        numero = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, '//input[@placeholder="Ex: 6157"]')))
-        numero.clear()
-        numero.send_keys("100")
+            input_cep = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "location-search")))
+            input_cep.clear()
+            input_cep.send_keys("06855-400")
 
-        confirmar = WebDriverWait(driver, 30).until(
-            EC.element_to_be_clickable((By.XPATH, '//button[@type="button" and normalize-space()="Confirmar"]'))
-        )
-        driver.execute_script("arguments[0].click();", confirmar)
-        
-        WebDriverWait(driver, 30).until(EC.invisibility_of_element_located((By.ID, "location-search")))
-        
-        loja_atual = WebDriverWait(driver, 30).until(
-            EC.visibility_of_element_located((By.XPATH, '//span[@data-test-id="regionalization-bar-seller-delivery-by"]'))
-        )
-        return loja_atual.text.strip()
-    except:
-        return None
+            numero = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH, '//input[@placeholder="Ex: 6157"]')))
+            numero.clear()
+            numero.send_keys("100")
+
+            confirmar = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable((By.XPATH, '//button[@type="button" and normalize-space()="Confirmar"]'))
+            )
+            driver.execute_script("arguments[0].click();", confirmar)
+            
+            WebDriverWait(driver, 20).until(EC.invisibility_of_element_located((By.ID, "location-search")))
+            
+            # Validação estrita da loja atual na interface
+            loja_atual = WebDriverWait(driver, 20).until(
+                EC.visibility_of_element_located((By.XPATH, '//span[@data-test-id="regionalization-bar-seller-delivery-by"]'))
+            )
+            nome_loja = loja_atual.text.strip()
+            
+            # Verifica se corresponde à região desejada
+            if "itapecerica" in nome_loja.lower():
+                print(f"✅ Loja confirmada com sucesso: {nome_loja}")
+                return nome_loja
+            else:
+                print(f"⚠️ Atenção: A loja configurada ({nome_loja}) não parece ser a de Itapecerica da Serra. Tentando novamente... ({tentativa + 1}/{tentativas_cep})")
+                time.sleep(2)
+        except Exception as e:
+            print(f"⚠️ Erro ao configurar CEP na tentativa {tentativa + 1}: {e}")
+            time.sleep(2)
+            
+    print("❌ Falha ao fixar a loja de Itapecerica da Serra após várias tentativas.")
+    return None
 
 # ===========================
 # ABRIR PÁGINA
@@ -136,13 +151,11 @@ def processar_categoria(url):
                     preco_elem = container.select_one("p.text-lg.text-neutral-500.font-bold")
                     preco = preco_elem.text.strip() if preco_elem else ""
 
-                    # --- NOVA BUSCA DE IMAGEM ---
+                    # --- BUSCA DE IMAGEM ---
                     imagem_url = ""
                     if container:
-                        # Tenta pegar a tag img dentro do container do produto
                         img_elem = container.find("img")
                         if img_elem:
-                            # Tenta pegar o src normal ou data-src (comum em lazy loading)
                             src = img_elem.get("src") or img_elem.get("data-src") or ""
                             if src:
                                 if src.startswith("/"):
