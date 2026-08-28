@@ -73,7 +73,7 @@ def load_and_process_data():
     if df.empty:
         return df
 
-    # Conversão de data
+    # Conversão de data (normalizada apenas para data sem horas, facilitando comparações)
     if "data_extracao" in df.columns:
         df["data_extracao"] = pd.to_datetime(df["data_extracao"], errors="coerce")
 
@@ -126,7 +126,6 @@ def load_and_process_data():
     df = df.sort_values(by=["link", "data_extracao"])
 
     # Cálculo dinâmico por produto (Menor preço, preço médio, variação, etc.)
-    # Agrupamos por 'link' (ou identificador único do produto)
     if "link" in df.columns and "preco" in df.columns:
         df["menor_preco"] = df.groupby("link")["preco"].transform("min")
         df["preco_medio"] = df.groupby("link")["preco"].transform("mean")
@@ -138,15 +137,12 @@ def load_and_process_data():
         # Distância percentual em relação à média histórica
         df["abaixo_media_pct"] = ((df["preco_medio"] - df["preco"]) / df["preco_medio"]) * 100
         
-        # Criação de um Score simples baseado no quanto o preço atual está próximo do mínimo histórico
-        # Quanto mais próximo ou abaixo do histórico, maior o score (0 a 100)
         def calcular_score(row):
             p = row["preco"]
             p_min = row["menor_preco"]
             p_max = row.get("preco_max", p)
             if pd.isna(p) or pd.isna(p_min) or p_max == p_min:
                 return 50.0
-            # Se o preço atual é igual ao menor preço, score 100. Caso contrário, escala proporcional.
             score = 100 * (1 - (p - p_min) / (p_max - p_min + 0.0001))
             return max(0.0, min(100.0, score))
 
@@ -172,7 +168,7 @@ opcao_menu = st.sidebar.radio(
         "🚨 Alertas do Dia",
         "📈 Histórico do Produto"
     ],
-    index=0
+    index=2 # Deixado padrão no Alertas para facilitar seu teste
 )
 
 # Filtro de Categoria
@@ -217,16 +213,12 @@ if opcao_menu == "📊 Visão Geral":
 
     total_prods = df_filtered["link"].nunique() if not df_filtered.empty and "link" in df_filtered.columns else 0
     
-    # Consideramos oportunidades os produtos na última coleta cujo preço é igual ou muito próximo ao menor preço histórico
     oportunidades_df = pd.DataFrame()
     alertas_df = pd.DataFrame()
     
     if not df_filtered.empty:
-        # Pega apenas a coleta mais recente de cada produto
         ultima_coleta = df_filtered.sort_values("data_extracao").groupby("link").tail(1)
         oportunidades_df = ultima_coleta[ultima_coleta["preco"] <= ultima_coleta["menor_preco"] * 1.01]
-        
-        # Alertas: variações absolutas maiores ou iguais a 5% na última coleta
         alertas_df = ultima_coleta[ultima_coleta["variacao_pct"].abs() >= 5]
         quedas_hoje = len(alertas_df[alertas_df["variacao_pct"] < 0])
     else:
@@ -287,7 +279,6 @@ elif opcao_menu == "🏆 Ranking de Oportunidades":
     if df_filtered.empty:
         st.warning("Nenhum produto encontrado.")
     else:
-        # Pega a última coleta de cada produto para o ranking
         df_rank = df_filtered.sort_values("data_extracao").groupby("link").tail(1).sort_values(by="score", ascending=False)
 
         col_f1, col_f2 = st.columns([2, 2])
@@ -320,21 +311,32 @@ elif opcao_menu == "🏆 Ranking de Oportunidades":
 
 
 # =====================================================
-# PÁGINA 3: ALERTAS DO DIA
+# PÁGINA 3: ALERTAS DO DIA (Ajustado para considerar apenas extrações de hoje)
 # =====================================================
 elif opcao_menu == "🚨 Alertas do Dia":
     st.markdown('<div class="main-title">🚨 Alertas Diários de Preço</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Variações de preço iguais ou superiores a 5% na última coleta</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Variações de preço iguais ou superiores a 5% extraídas no dia de hoje</div>', unsafe_allow_html=True)
 
     if df_filtered.empty:
         st.info("Nenhum dado disponível.")
     else:
-        ultima_coleta = df_filtered.sort_values("data_extracao").groupby("link").tail(1)
-        df_alertas = ultima_coleta[ultima_coleta["variacao_pct"].abs() >= 5].copy()
+        # Pega a última coleta de cada produto
+        ultima_coleta = df_filtered.sort_values("data_extracao").groupby("link").tail(1).copy()
+
+        # Define a data de hoje (considerando apenas o dia/mês/ano, ignorando horários exatos)
+        hoje = pd.Timestamp.today().normalize()
+
+        # Filtra estritamente apenas os produtos cuja data da última extração seja HOJE
+        ultima_coleta["data_apenas"] = ultima_coleta["data_extracao"].dt.normalize()
+        df_hoje = ultima_coleta[ultima_coleta["data_apenas"] == hoje]
+
+        # Aplica a regra de variação >= 5% em cima apenas dos produtos de hoje
+        df_alertas = df_hoje[df_hoje["variacao_pct"].abs() >= 5].copy()
 
         if df_alertas.empty:
-            st.info("Nenhum alerta de variação expressiva (≥ 5%) encontrado na coleta mais recente.")
+            st.info(f"Nenhum alerta de variação expressiva (≥ 5%) encontrado para coletas realizadas hoje ({hoje.strftime('%d/%m/%Y')}). Produtos desatualizados foram desconsiderados.")
         else:
+            st.success(f"Exibindo alertas baseados nas extrações de hoje ({hoje.strftime('%d/%m/%Y')}).")
             tipo_filtro = st.radio("Filtrar por Tipo:", ["Todos", "Queda 📉", "Alta 📈"], horizontal=True)
 
             if tipo_filtro == "Queda 📉":
@@ -342,7 +344,7 @@ elif opcao_menu == "🚨 Alertas do Dia":
             elif tipo_filtro == "Alta 📈":
                 df_alertas = df_alertas[df_alertas["variacao_pct"] > 0]
 
-            cols_existentes = [c for c in ["nome_produto", "categoria", "preco", "preco_anterior", "variacao_pct", "link"] if c in df_alertas.columns]
+            cols_existentes = [c for c in ["nome_produto", "categoria", "preco", "preco_anterior", "variacao_pct", "data_extracao", "link"] if c in df_alertas.columns]
             
             df_display = df_alertas[cols_existentes].rename(columns={
                 "nome_produto": "Produto",
@@ -350,6 +352,7 @@ elif opcao_menu == "🚨 Alertas do Dia":
                 "preco": "Preço Atual",
                 "preco_anterior": "Preço Anterior",
                 "variacao_pct": "Variação (%)",
+                "data_extracao": "Data/Hora Extração",
                 "link": "Link"
             })
             
