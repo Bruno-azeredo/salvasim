@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from datetime import datetime
 from supabase import create_client, Client
 
 # Configurações do Supabase via Variáveis de Ambiente do GitHub Actions
@@ -78,6 +79,15 @@ def run():
     # Pega estritamente a última coleta de cada produto
     ultima_coleta = df_validos.sort_values("data_extracao").groupby("link").tail(1).copy()
     
+    # Define a data de hoje (normalizada para zerar horas/minutos) e filtra apenas extrações de hoje
+    hoje = pd.Timestamp.today().normalize()
+    ultima_coleta["data_apenas"] = ultima_coleta["data_extracao"].dt.normalize()
+    ultima_coleta = ultima_coleta[ultima_coleta["data_apenas"] == hoje].copy()
+
+    if ultima_coleta.empty:
+        print(f"❌ Nenhum produto com extração realizada na data de hoje ({hoje.strftime('%d/%m/%Y')}) foi encontrado.")
+        return
+
     # Calcula a variação exata idêntica à do dashboard
     ultima_coleta["variacao_pct"] = ((ultima_coleta["preco"] - ultima_coleta["preco_anterior"]) / ultima_coleta["preco_anterior"]) * 100
 
@@ -85,10 +95,10 @@ def run():
     top_5 = ultima_coleta.sort_values(by="variacao_pct", ascending=True).head(5)
 
     if top_5.empty:
-        print("❌ Não foi possível calcular o ranking.")
+        print("❌ Não foi possível calcular o ranking com base nas coletas de hoje.")
         return
 
-    print(f"\n🔥 Top 5 maiores quedas alinhadas com o Dashboard! Gerando prompts com URLs:\n" + "="*50)
+    print(f"\n🔥 Top 5 maiores quedas do dia ({hoje.strftime('%d/%m/%Y')}) alinhadas com o Dashboard! Gerando prompts:\n" + "="*50)
 
     pos = 1
     for _, produto in top_5.iterrows():
