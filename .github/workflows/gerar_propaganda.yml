@@ -1,4 +1,4 @@
-name: Execução Única - Sincronização Shopee
+name: Gerar Propaganda
 
 on:
   workflow_dispatch: # Permite rodar manualmente pelo botão no GitHub
