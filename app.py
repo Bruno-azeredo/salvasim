@@ -1,4 +1,4 @@
-import streamlit as st
+import os
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -168,8 +168,13 @@ opcao_menu = st.sidebar.radio(
         "🚨 Alertas do Dia",
         "📈 Histórico do Produto"
     ],
-    index=2 # Deixado padrão no Alertas para facilitar seu teste
+    index=2 
 )
+
+# Filtro global: Apenas produtos da data atual
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📅 Filtro Temporal")
+apenas_data_atual = st.sidebar.checkbox("Considerar apenas produtos da data atual (Hoje)", value=False)
 
 # Filtro de Categoria
 todas_categorias = sorted(df_monitor["categoria"].dropna().unique().tolist()) if not df_monitor.empty and "categoria" in df_monitor.columns else []
@@ -186,12 +191,26 @@ if todas_categorias:
 else:
     categorias_selecionadas = []
 
-def filtrar_por_categoria(df):
-    if df.empty or "categoria" not in df.columns or not categorias_selecionadas:
+# Função unificada de filtragem aplicada em todas as telas
+def filtrar_dados(df):
+    if df.empty:
         return df
-    return df[df["categoria"].isin(categorias_selecionadas)]
+    
+    df_f = df.copy()
+    
+    # 1. Filtro por data atual, se ativado
+    if apenas_data_atual and "data_extracao" in df_f.columns:
+        hoje = pd.Timestamp.today().normalize()
+        df_f["data_apenas"] = df_f["data_extracao"].dt.normalize()
+        df_f = df_f[df_f["data_apenas"] == hoje]
+        
+    # 2. Filtro por categoria
+    if "categoria" in df_f.columns and categorias_selecionadas:
+        df_f = df_f[df_f["categoria"].isin(categorias_selecionadas)]
+        
+    return df_f
 
-df_filtered = filtrar_por_categoria(df_monitor)
+df_filtered = filtrar_dados(df_monitor)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ⚙️ Status da Base")
@@ -266,7 +285,7 @@ if opcao_menu == "📊 Visão Geral":
                 hide_index=True
             )
         else:
-            st.info("Nenhuma queda de preço significativa identificada na última coleta.")
+            st.info("Nenhuma queda de preço significativa identificada.")
 
 
 # =====================================================
@@ -277,7 +296,7 @@ elif opcao_menu == "🏆 Ranking de Oportunidades":
     st.markdown('<div class="sub-title">Produtos ordenados pelo Score de Oportunidade calculado</div>', unsafe_allow_html=True)
 
     if df_filtered.empty:
-        st.warning("Nenhum produto encontrado.")
+        st.warning("Nenhum produto encontrado com os filtros atuais.")
     else:
         df_rank = df_filtered.sort_values("data_extracao").groupby("link").tail(1).sort_values(by="score", ascending=False)
 
@@ -311,32 +330,24 @@ elif opcao_menu == "🏆 Ranking de Oportunidades":
 
 
 # =====================================================
-# PÁGINA 3: ALERTAS DO DIA (Ajustado para considerar apenas extrações de hoje)
+# PÁGINA 3: ALERTAS DO DIA
 # =====================================================
 elif opcao_menu == "🚨 Alertas do Dia":
     st.markdown('<div class="main-title">🚨 Alertas Diários de Preço</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Variações de preço iguais ou superiores a 5% extraídas no dia de hoje</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Variações de preço iguais ou superiores a 5%</div>', unsafe_allow_html=True)
 
     if df_filtered.empty:
-        st.info("Nenhum dado disponível.")
+        st.info("Nenhum dado disponível com os filtros atuais.")
     else:
-        # Pega a última coleta de cada produto
+        # Pega a última coleta de cada produto dentro do escopo filtrado
         ultima_coleta = df_filtered.sort_values("data_extracao").groupby("link").tail(1).copy()
 
-        # Define a data de hoje (considerando apenas o dia/mês/ano, ignorando horários exatos)
-        hoje = pd.Timestamp.today().normalize()
-
-        # Filtra estritamente apenas os produtos cuja data da última extração seja HOJE
-        ultima_coleta["data_apenas"] = ultima_coleta["data_extracao"].dt.normalize()
-        df_hoje = ultima_coleta[ultima_coleta["data_apenas"] == hoje]
-
-        # Aplica a regra de variação >= 5% em cima apenas dos produtos de hoje
-        df_alertas = df_hoje[df_hoje["variacao_pct"].abs() >= 5].copy()
+        # Aplica a regra de variação >= 5%
+        df_alertas = ultima_coleta[ultima_coleta["variacao_pct"].abs() >= 5].copy()
 
         if df_alertas.empty:
-            st.info(f"Nenhum alerta de variação expressiva (≥ 5%) encontrado para coletas realizadas hoje ({hoje.strftime('%d/%m/%Y')}). Produtos desatualizados foram desconsiderados.")
+            st.info("Nenhum alerta de variação expressiva (≥ 5%) encontrado.")
         else:
-            st.success(f"Exibindo alertas baseados nas extrações de hoje ({hoje.strftime('%d/%m/%Y')}).")
             tipo_filtro = st.radio("Filtrar por Tipo:", ["Todos", "Queda 📉", "Alta 📈"], horizontal=True)
 
             if tipo_filtro == "Queda 📉":
@@ -367,7 +378,7 @@ elif opcao_menu == "📈 Histórico do Produto":
     st.markdown('<div class="sub-title">Selecione um produto para acompanhar seu histórico temporal completo</div>', unsafe_allow_html=True)
 
     if df_filtered.empty:
-        st.error("Nenhum produto disponível.")
+        st.error("Nenhum produto disponível com os filtros atuais.")
     else:
         link_col = "link" if "link" in df_filtered.columns else df_filtered.columns[0]
         produtos_unicos = df_filtered[[link_col, "nome_produto"]].drop_duplicates().sort_values("nome_produto")
