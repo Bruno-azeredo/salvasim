@@ -133,7 +133,7 @@ def limpar_produtos_inativos_antigos():
         return
 
     agora = datetime.now(timezone.utc)
-    limite_um_mes = agora - timedelta(days=15)
+    limite_um_mes = agora - timedelta(days=10)
     ids_para_remover = []
     excluidos_count = 0
 
