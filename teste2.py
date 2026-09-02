@@ -22,6 +22,8 @@ def analisar_imagens_pasta(pasta):
                 "Analise todas estas páginas de encarte de supermercado fornecidas. "
                 "Extraia e liste todos os produtos ofertados em formato de tabela Markdown estruturada com as seguintes colunas exatas: "
                 "Mercado, Nome do Produto, Preço e Data Final da Oferta. "
+                "IMPORTANTE PARA O NOME DO PRODUTO: Inclua obrigatoriamente o tamanho, peso ou volume exato que aparece no encarte "
+                "(por exemplo: 1kg, 500g, 400ml, 1L, etc.) junto ao nome do produto. "
                 "Se a data final não estiver visível em nenhuma página, coloque 'Não informada'. "
                 "Retorne apenas a tabela Markdown limpa."
             )
@@ -34,7 +36,6 @@ def analisar_imagens_pasta(pasta):
         
         base64_img = base64.b64encode(dados_img).decode("utf-8")
         
-        # Força o MIME type correto para JPEG
         content_messages.append({
             "type": "image_url",
             "image_url": {
