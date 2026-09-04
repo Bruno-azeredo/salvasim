@@ -1,0 +1,103 @@
+2026-09-04 15:54:22,317 | INFO | Tentativa 1/3
+2026-09-04 15:54:22,318 | INFO | ======================================================================
+2026-09-04 15:54:22,318 | INFO | INICIANDO SCRAPER iFOOD
+2026-09-04 15:54:22,318 | INFO | ======================================================================
+2026-09-04 15:54:25,542 | INFO | Abrindo iFood...
+2026-09-04 15:54:28,711 | INFO | Página carregada: https://www.ifood.com.br/delivery/itapecerica-da-serra-sp/extra-itapecerica-centro-centro/cbf00661-0fe3-4818-b78c-26080e24a63b?__cf_chl_rt_tk=WSn9gvw9IretMrchhKAWMN01p2mIfS6l1rwItv6b79U-1788548068-1.0.1.1-Z3X2doLQwaSVflQ4Tuc_d265pbOIDGex7VWXHvaEIdM
+2026-09-04 15:54:33,713 | INFO | Iniciando scroll...
+2026-09-04 15:54:33,728 | INFO | Scroll 1/100
+2026-09-04 15:54:35,776 | INFO | Altura atual: 900
+2026-09-04 15:54:35,776 | INFO | Scroll 2/100
+2026-09-04 15:54:37,782 | INFO | Altura atual: 900
+2026-09-04 15:54:37,783 | INFO | Scroll 3/100
+2026-09-04 15:54:39,788 | INFO | Altura atual: 900
+2026-09-04 15:54:39,789 | INFO | Scroll 4/100
+2026-09-04 15:54:41,795 | INFO | Altura atual: 900
+2026-09-04 15:54:41,795 | INFO | Scroll 5/100
+2026-09-04 15:54:43,800 | INFO | Altura atual: 900
+2026-09-04 15:54:43,801 | INFO | Scroll 6/100
+2026-09-04 15:54:45,806 | INFO | Altura atual: 900
+2026-09-04 15:54:45,806 | INFO | Página chegou ao final.
+2026-09-04 15:54:48,810 | INFO | Localizando produtos...
+2026-09-04 15:55:03,812 | ERROR | Elemento de produto não encontrado.
+2026-09-04 15:55:03,812 | INFO | Produtos coletados: 0
+2026-09-04 15:55:03,823 | WARNING | Nenhum produto foi encontrado.
+2026-09-04 15:55:03,998 | INFO | Screenshot salvo: dados\erro_ifood.png
+2026-09-04 15:55:04,026 | INFO | HTML salvo: dados\erro_ifood.html
+2026-09-04 15:58:26,741 | INFO | Tentativa 1/3
+2026-09-04 15:58:26,742 | INFO | ======================================================================
+2026-09-04 15:58:26,742 | INFO | INICIANDO SCRAPER iFOOD
+2026-09-04 15:58:26,742 | INFO | ======================================================================
+2026-09-04 15:58:30,929 | INFO | Abrindo iFood...
+2026-09-04 15:58:31,033 | INFO | Página carregada: https://www.ifood.com.br/delivery/itapecerica-da-serra-sp/extra-itapecerica-centro-centro/cbf00661-0fe3-4818-b78c-26080e24a63b?__cf_chl_rt_tk=KcAxHy91_mraAR4hF.Bro4R7bIh4ncki2uyxcGC2l6w-1788548310-1.0.1.1-_dpSAS3L2gapK27r6_ah1aJJUx3bFigiG2uhhG7WbLY
+2026-09-04 15:58:36,034 | INFO | Iniciando scroll...
+2026-09-04 15:58:36,034 | INFO | Scroll 1/100
+2026-09-04 15:58:38,063 | INFO | Altura atual: 900
+2026-09-04 15:58:38,064 | INFO | Scroll 2/100
+2026-09-04 15:58:40,071 | INFO | Altura atual: 900
+2026-09-04 15:58:40,071 | INFO | Scroll 3/100
+2026-09-04 15:58:42,082 | INFO | Altura atual: 900
+2026-09-04 15:58:42,082 | INFO | Scroll 4/100
+2026-09-04 15:58:44,091 | INFO | Altura atual: 900
+2026-09-04 15:58:44,091 | INFO | Scroll 5/100
+2026-09-04 15:58:46,097 | INFO | Altura atual: 900
+2026-09-04 15:58:46,097 | INFO | Scroll 6/100
+2026-09-04 15:58:48,103 | INFO | Altura atual: 900
+2026-09-04 15:58:48,103 | INFO | Página chegou ao final.
+2026-09-04 15:58:51,106 | INFO | Localizando produtos...
+2026-09-04 15:59:06,123 | ERROR | Elemento de produto não encontrado.
+2026-09-04 15:59:06,123 | INFO | Produtos coletados: 0
+2026-09-04 15:59:06,124 | WARNING | Nenhum produto foi encontrado.
+2026-09-04 15:59:06,265 | INFO | Screenshot salvo: dados\erro_ifood.png
+2026-09-04 15:59:06,275 | INFO | HTML salvo: dados\erro_ifood.html
+2026-09-04 15:59:10,575 | INFO | Tentativa 1/3
+2026-09-04 15:59:10,575 | INFO | ======================================================================
+2026-09-04 15:59:10,575 | INFO | INICIANDO SCRAPER iFOOD
+2026-09-04 15:59:10,575 | INFO | ======================================================================
+2026-09-04 15:59:11,705 | INFO | Abrindo iFood...
+2026-09-04 15:59:11,811 | INFO | Página carregada: https://www.ifood.com.br/delivery/itapecerica-da-serra-sp/extra-itapecerica-centro-centro/cbf00661-0fe3-4818-b78c-26080e24a63b?__cf_chl_rt_tk=hizDkGRl9ZVOf1TzVevyVOqDs2VwsHG5_wrcmkGeZv8-1788548351-1.0.1.1-HMmmh37sZ0MTrAlzWrxgIQyrhqCqxZZTNtgnnTroXt4
+2026-09-04 15:59:16,812 | INFO | Iniciando scroll...
+2026-09-04 15:59:16,812 | INFO | Scroll 1/100
+2026-09-04 15:59:18,846 | INFO | Altura atual: 900
+2026-09-04 15:59:18,846 | INFO | Scroll 2/100
+2026-09-04 15:59:20,859 | INFO | Altura atual: 900
+2026-09-04 15:59:20,859 | INFO | Scroll 3/100
+2026-09-04 15:59:22,874 | INFO | Altura atual: 900
+2026-09-04 15:59:22,874 | INFO | Scroll 4/100
+2026-09-04 15:59:24,880 | INFO | Altura atual: 900
+2026-09-04 15:59:24,880 | INFO | Scroll 5/100
+2026-09-04 15:59:26,891 | INFO | Altura atual: 900
+2026-09-04 15:59:26,891 | INFO | Scroll 6/100
+2026-09-04 15:59:28,900 | INFO | Altura atual: 900
+2026-09-04 15:59:28,900 | INFO | Página chegou ao final.
+2026-09-04 15:59:31,904 | INFO | Localizando produtos...
+2026-09-04 15:59:44,471 | ERROR | Erro geral: Page.wait_for_selector: Target page, context or browser has been closed
+Call log:
+  - waiting for locator("div.product-detail__description") to be visible
+Traceback (most recent call last):
+  File "D:\Projeto\salvasim\teste.py", line 1047, in executar_scraper
+    produtos = capturar_produtos(
+               ^^^^^^^^^^^^^^^^^^
+  File "D:\Projeto\salvasim\teste.py", line 586, in capturar_produtos
+    page.wait_for_selector(
+  File "C:\Users\Pichau\anaconda3\Lib\site-packages\playwright\sync_api\_generated.py", line 8217, in wait_for_selector
+    self._sync(
+  File "C:\Users\Pichau\anaconda3\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "C:\Users\Pichau\anaconda3\Lib\site-packages\playwright\_impl\_page.py", line 419, in wait_for_selector
+    return await self._main_frame.wait_for_selector(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Pichau\anaconda3\Lib\site-packages\playwright\_impl\_frame.py", line 369, in wait_for_selector
+    await self._channel.send(
+  File "C:\Users\Pichau\anaconda3\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Pichau\anaconda3\Lib\site-packages\playwright\_impl\_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TargetClosedError: Page.wait_for_selector: Target page, context or browser has been closed
+Call log:
+  - waiting for locator("div.product-detail__description") to be visible
+
+2026-09-04 15:59:44,532 | ERROR | Erro ao salvar screenshot: Page.screenshot: Target page, context or browser has been closed
+2026-09-04 15:59:44,534 | ERROR | Erro ao salvar HTML: Page.content: Target page, context or browser has been closed

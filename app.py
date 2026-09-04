@@ -5,11 +5,12 @@ import plotly.graph_objects as go
 from supabase import create_client
 import re
 import os
+
 # =====================================================
 # CONFIGURAÇÃO DA PÁGINA
 # =====================================================
 st.set_page_config(
-    page_title="Monitor de Preços | E-commerce Intelligence",
+    page_title="Monitor de Preços | Atacadão Itapecerica",
     page_icon="🛒",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -47,11 +48,10 @@ def init_supabase():
 supabase = init_supabase()
 
 # =====================================================
-# CARREGAMENTO E PROCESSAMENTO EM TEMPO REAL
+# CARREGAMENTO E PROCESSAMENTO DOS DADOS (COM PAGINAÇÃO)
 # =====================================================
 @st.cache_data(ttl=600)
 def load_and_process_data():
-    # Busca todos os dados da tabela bruta 'produtos_atacadao' com paginação
     rows = []
     limit = 1000
     offset = 0
@@ -73,11 +73,11 @@ def load_and_process_data():
     if df.empty:
         return df
 
-    # Conversão de data (normalizada apenas para data sem horas, facilitando comparações)
+    # Conversão de data
     if "data_extracao" in df.columns:
         df["data_extracao"] = pd.to_datetime(df["data_extracao"], errors="coerce")
 
-    # Limpeza robusta da coluna de preço
+    # Limpeza robusta da coluna de preço (Text -> Float)
     if "preco" in df.columns:
         def limpar_num(val):
             if pd.isna(val):
@@ -103,7 +103,7 @@ def load_and_process_data():
 
         df["preco"] = df["preco"].apply(limpar_num)
 
-    # Normalização de Nome de Produto e Categoria
+    # Normalização de Nome de Produto
     if "nome_produto" not in df.columns:
         for alt in ["nome", "titulo", "produto", "descricao"]:
             if alt in df.columns:
@@ -112,6 +112,7 @@ def load_and_process_data():
         if "nome_produto" not in df.columns and "link" in df.columns:
             df["nome_produto"] = df["link"]
 
+    # Normalização de Categoria
     if "categoria" not in df.columns:
         found_cat = False
         for col in ["category", "departamento", "grupo", "cat", "secao"]:
@@ -129,6 +130,7 @@ def load_and_process_data():
     if "link" in df.columns and "preco" in df.columns:
         df["menor_preco"] = df.groupby("link")["preco"].transform("min")
         df["preco_medio"] = df.groupby("link")["preco"].transform("mean")
+        df["preco_max"] = df.groupby("link")["preco"].transform("max")
         df["preco_anterior"] = df.groupby("link")["preco"].shift(1)
         
         # Variação percentual em relação à coleta anterior
@@ -140,13 +142,12 @@ def load_and_process_data():
         def calcular_score(row):
             p = row["preco"]
             p_min = row["menor_preco"]
-            p_max = row.get("preco_max", p)
+            p_max = row["preco_max"]
             if pd.isna(p) or pd.isna(p_min) or p_max == p_min:
                 return 50.0
             score = 100 * (1 - (p - p_min) / (p_max - p_min + 0.0001))
             return max(0.0, min(100.0, score))
 
-        df["preco_max"] = df.groupby("link")["preco"].transform("max")
         df["score"] = df.apply(calcular_score, axis=1)
 
     return df
@@ -157,8 +158,8 @@ df_monitor = load_and_process_data()
 # SIDEBAR / NAVEGAÇÃO
 # =====================================================
 st.sidebar.image("https://img.icons8.com/color/96/shopping-cart-loaded.png", width=64)
-st.sidebar.title("Intelligence B2B")
-st.sidebar.caption("Atacadão Price Tracker")
+st.sidebar.title("Atacadão Itapecerica")
+st.sidebar.caption("Monitor de Inteligência de Preços")
 
 opcao_menu = st.sidebar.radio(
     "Navegação",
@@ -168,7 +169,7 @@ opcao_menu = st.sidebar.radio(
         "🚨 Alertas do Dia",
         "📈 Histórico do Produto"
     ],
-    index=2 
+    index=0 
 )
 
 # Filtro global: Apenas produtos da data atual
@@ -226,7 +227,7 @@ else:
 # =====================================================
 if opcao_menu == "📊 Visão Geral":
     st.markdown('<div class="main-title">Visão Geral de Precificação</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Métricas calculadas dinamicamente a partir do histórico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Atacadão Itapecerica da Serra - Métricas calculadas em tempo real</div>', unsafe_allow_html=True)
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -339,10 +340,7 @@ elif opcao_menu == "🚨 Alertas do Dia":
     if df_filtered.empty:
         st.info("Nenhum dado disponível com os filtros atuais.")
     else:
-        # Pega a última coleta de cada produto dentro do escopo filtrado
         ultima_coleta = df_filtered.sort_values("data_extracao").groupby("link").tail(1).copy()
-
-        # Aplica a regra de variação >= 5%
         df_alertas = ultima_coleta[ultima_coleta["variacao_pct"].abs() >= 5].copy()
 
         if df_alertas.empty:

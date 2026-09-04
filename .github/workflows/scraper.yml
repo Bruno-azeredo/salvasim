@@ -3,7 +3,7 @@ name: Pipeline Completo Atacadão
 on:
   workflow_dispatch: # Permite rodar manualmente
   schedule:
-    - cron: '0 3 * * *' # Roda todo dia às 09:00 UTC
+    - cron: '0 4 * * *' # Roda todo dia às 09:00 UTC
 
 jobs:
   run-pipeline:
