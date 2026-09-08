@@ -44,54 +44,238 @@ def criar_driver():
 
 def configurar_cep(driver):
     tentativas_cep = 3
+
     for tentativa in range(tentativas_cep):
         try:
-            cep_atual = WebDriverWait(driver, 20).until(
-                EC.element_to_be_clickable((By.XPATH, '//span[@data-test-id="regionalization-bar-desktop-cep"]'))
+            print(
+                f"🔄 Configurando CEP - "
+                f"tentativa {tentativa + 1}/{tentativas_cep}"
             )
-            driver.execute_script("arguments[0].click();", cep_atual)
 
-            try:
-                entrega = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, '//button[.//h2[contains(normalize-space(),"Entrega em Casa")]]'))
+            # Aguarda o carregamento da página
+            WebDriverWait(driver, 30).until(
+                lambda d: d.execute_script(
+                    "return document.readyState"
+                ) == "complete"
+            )
+
+            # =====================================================
+            # 1. CLICA NO BOTÃO DO CEP
+            # =====================================================
+
+            botao_cep = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located(
+                    (
+                        By.CSS_SELECTOR,
+                        'button[data-test-id="regionalization-bar-zip-btn-desktop"]'
+                    )
                 )
-                driver.execute_script("arguments[0].click();", entrega)
-            except TimeoutException:
-                pass
+            )
 
-            input_cep = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "location-search")))
+            print(
+                f"📍 Botão de regionalização encontrado: "
+                f"{botao_cep.text}"
+            )
+
+            # Scroll até o botão
+            driver.execute_script(
+                """
+                arguments[0].scrollIntoView({
+                    block: 'center',
+                    inline: 'center'
+                });
+                """,
+                botao_cep
+            )
+
+            time.sleep(1)
+
+            # Clique
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable(
+                        (
+                            By.CSS_SELECTOR,
+                            'button[data-test-id="regionalization-bar-zip-btn-desktop"]'
+                        )
+                    )
+                ).click()
+
+            except Exception:
+                print(
+                    "⚠️ Clique normal falhou. "
+                    "Tentando JavaScript..."
+                )
+
+                driver.execute_script(
+                    "arguments[0].click();",
+                    botao_cep
+                )
+
+            print("✅ Botão do CEP clicado")
+
+            # =====================================================
+            # 2. CLICA EM "ENTREGA EM CASA"
+            # =====================================================
+
+            entrega = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable(
+                    (
+                        By.XPATH,
+                        '//h2[contains(normalize-space(), "Entrega em Casa")]'
+                    )
+                )
+            )
+
+            driver.execute_script(
+                "arguments[0].click();",
+                entrega
+            )
+
+            print("✅ Entrega em Casa selecionada")
+
+            # =====================================================
+            # 3. PREENCHE O CEP
+            # =====================================================
+
+            input_cep = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable(
+                    (By.ID, "location-search")
+                )
+            )
+
+            input_cep.click()
             input_cep.clear()
             input_cep.send_keys("06855-400")
 
-            numero = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH, '//input[@placeholder="Ex: 6157"]')))
+            print("📍 CEP preenchido: 06855-400")
+
+            # =====================================================
+            # 4. PREENCHE O NÚMERO
+            # =====================================================
+
+            numero = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable(
+                    (
+                        By.XPATH,
+                        '//input[@placeholder="Ex: 6157"]'
+                    )
+                )
+            )
+
+            numero.click()
             numero.clear()
             numero.send_keys("100")
 
+            print("🏠 Número preenchido: 100")
+
+            # =====================================================
+            # 5. CLICA EM CONFIRMAR
+            # =====================================================
+
             confirmar = WebDriverWait(driver, 20).until(
-                EC.element_to_be_clickable((By.XPATH, '//button[@type="button" and normalize-space()="Confirmar"]'))
+                EC.element_to_be_clickable(
+                    (
+                        By.XPATH,
+                        '//button[@type="button" and normalize-space()="Confirmar"]'
+                    )
+                )
             )
-            driver.execute_script("arguments[0].click();", confirmar)
-            
-            WebDriverWait(driver, 20).until(EC.invisibility_of_element_located((By.ID, "location-search")))
-            
-            # Validação estrita da loja atual na interface
+
+            driver.execute_script(
+                "arguments[0].click();",
+                confirmar
+            )
+
+            print("✅ Confirmar clicado")
+
+            # =====================================================
+            # 6. AGUARDA O MODAL FECHAR
+            # =====================================================
+
+            WebDriverWait(driver, 20).until(
+                EC.invisibility_of_element_located(
+                    (By.ID, "location-search")
+                )
+            )
+
+            # =====================================================
+            # 7. VALIDA A LOJA
+            # =====================================================
+
             loja_atual = WebDriverWait(driver, 20).until(
-                EC.visibility_of_element_located((By.XPATH, '//span[@data-test-id="regionalization-bar-seller-delivery-by"]'))
+                EC.visibility_of_element_located(
+                    (
+                        By.XPATH,
+                        '//span[@data-test-id="regionalization-bar-seller-delivery-by"]'
+                    )
+                )
             )
+
             nome_loja = loja_atual.text.strip()
-            
-            # Verifica se corresponde à região desejada
+
+            print(
+                f"🏪 Loja identificada: {nome_loja}"
+            )
+
+            # =====================================================
+            # 8. CONFIRMA ITAPECERICA
+            # =====================================================
+
             if "itapecerica" in nome_loja.lower():
-                print(f"✅ Loja confirmada com sucesso: {nome_loja}")
+
+                print(
+                    f"✅ Loja confirmada com sucesso: "
+                    f"{nome_loja}"
+                )
+
                 return nome_loja
+
             else:
-                print(f"⚠️ Atenção: A loja configurada ({nome_loja}) não parece ser a de Itapecerica da Serra. Tentando novamente... ({tentativa + 1}/{tentativas_cep})")
-                time.sleep(2)
+
+                print(
+                    f"⚠️ Loja incorreta: {nome_loja}"
+                )
+
+                time.sleep(3)
+
+        except TimeoutException as e:
+
+            print(
+                f"⚠️ Timeout na tentativa "
+                f"{tentativa + 1}: {e}"
+            )
+
+            try:
+                driver.save_screenshot(
+                    f"erro_cep_{tentativa + 1}.png"
+                )
+            except:
+                pass
+
+            time.sleep(3)
+
         except Exception as e:
-            print(f"⚠️ Erro ao configurar CEP na tentativa {tentativa + 1}: {e}")
-            time.sleep(2)
-            
-    print("❌ Falha ao fixar a loja de Itapecerica da Serra após várias tentativas.")
+
+            print(
+                f"⚠️ Erro na tentativa "
+                f"{tentativa + 1}: {e}"
+            )
+
+            try:
+                driver.save_screenshot(
+                    f"erro_cep_{tentativa + 1}.png"
+                )
+            except:
+                pass
+
+            time.sleep(3)
+
+    print(
+        "❌ Falha ao configurar a loja "
+        "de Itapecerica da Serra."
+    )
+
     return None
 
 # ===========================
