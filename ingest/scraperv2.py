@@ -43,7 +43,7 @@ def criar_driver():
 # ===========================
 
 def configurar_cep(driver):
-    tentativas_cep = 3
+    tentativas_cep = 10
 
     for tentativa in range(tentativas_cep):
         try:
@@ -75,7 +75,7 @@ def configurar_cep(driver):
                 botao_cep
             )
 
-            time.sleep(1)
+            time.sleep(3)
 
             # Tenta clicar normalmente
             try:
@@ -157,28 +157,23 @@ def configurar_cep(driver):
                 )
             )
 
-            # 7. Valida a loja
             loja_atual = WebDriverWait(driver, 20).until(
-                EC.visibility_of_element_located(
+                EC.presence_of_element_located(
                     (
                         By.XPATH,
-                        '//span[@data-test-id="regionalization-bar-seller-delivery-by"]'
+                        '//span[@data-test-id="regionalization-bar-seller-delivery-by" and contains(translate(normalize-space(.), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "itapecerica da serra")]'
                     )
                 )
             )
 
             nome_loja = loja_atual.text.strip()
 
-            # 8. Confirma se é Itapecerica
-            if "itapecerica" in nome_loja.lower():
-                print(f"✅ CEP configurado com sucesso — Loja: {nome_loja}")
-                return nome_loja
+            print(f"✅ CEP configurado com sucesso — {nome_loja}")
 
-            # Loja errada: tenta novamente
-            time.sleep(2)
-
+            return nome_loja
+        
         except Exception:
-            time.sleep(2)
+            time.sleep(3)
 
     # Se chegou aqui, todas as tentativas falharam
     print("❌ Erro ao configurar o CEP — não foi possível selecionar a loja de Itapecerica da Serra.")
