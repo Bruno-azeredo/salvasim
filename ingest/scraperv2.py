@@ -47,11 +47,6 @@ def configurar_cep(driver):
 
     for tentativa in range(tentativas_cep):
         try:
-            print(
-                f"🔄 Configurando CEP - "
-                f"tentativa {tentativa + 1}/{tentativas_cep}"
-            )
-
             # Aguarda o carregamento da página
             WebDriverWait(driver, 30).until(
                 lambda d: d.execute_script(
@@ -59,10 +54,7 @@ def configurar_cep(driver):
                 ) == "complete"
             )
 
-            # =====================================================
-            # 1. CLICA NO BOTÃO DO CEP
-            # =====================================================
-
+            # 1. Localiza o botão de regionalização
             botao_cep = WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located(
                     (
@@ -72,12 +64,7 @@ def configurar_cep(driver):
                 )
             )
 
-            print(
-                f"📍 Botão de regionalização encontrado: "
-                f"{botao_cep.text}"
-            )
-
-            # Scroll até o botão
+            # Garante que esteja visível
             driver.execute_script(
                 """
                 arguments[0].scrollIntoView({
@@ -90,7 +77,7 @@ def configurar_cep(driver):
 
             time.sleep(1)
 
-            # Clique
+            # Tenta clicar normalmente
             try:
                 WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable(
@@ -102,22 +89,13 @@ def configurar_cep(driver):
                 ).click()
 
             except Exception:
-                print(
-                    "⚠️ Clique normal falhou. "
-                    "Tentando JavaScript..."
-                )
-
+                # Fallback para JavaScript
                 driver.execute_script(
                     "arguments[0].click();",
                     botao_cep
                 )
 
-            print("✅ Botão do CEP clicado")
-
-            # =====================================================
-            # 2. CLICA EM "ENTREGA EM CASA"
-            # =====================================================
-
+            # 2. Seleciona "Entrega em Casa"
             entrega = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (
@@ -132,12 +110,7 @@ def configurar_cep(driver):
                 entrega
             )
 
-            print("✅ Entrega em Casa selecionada")
-
-            # =====================================================
-            # 3. PREENCHE O CEP
-            # =====================================================
-
+            # 3. Preenche CEP
             input_cep = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (By.ID, "location-search")
@@ -148,12 +121,7 @@ def configurar_cep(driver):
             input_cep.clear()
             input_cep.send_keys("06855-400")
 
-            print("📍 CEP preenchido: 06855-400")
-
-            # =====================================================
-            # 4. PREENCHE O NÚMERO
-            # =====================================================
-
+            # 4. Preenche número
             numero = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (
@@ -167,12 +135,7 @@ def configurar_cep(driver):
             numero.clear()
             numero.send_keys("100")
 
-            print("🏠 Número preenchido: 100")
-
-            # =====================================================
-            # 5. CLICA EM CONFIRMAR
-            # =====================================================
-
+            # 5. Confirma
             confirmar = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (
@@ -187,22 +150,14 @@ def configurar_cep(driver):
                 confirmar
             )
 
-            print("✅ Confirmar clicado")
-
-            # =====================================================
-            # 6. AGUARDA O MODAL FECHAR
-            # =====================================================
-
+            # 6. Aguarda o modal fechar
             WebDriverWait(driver, 20).until(
                 EC.invisibility_of_element_located(
                     (By.ID, "location-search")
                 )
             )
 
-            # =====================================================
-            # 7. VALIDA A LOJA
-            # =====================================================
-
+            # 7. Valida a loja
             loja_atual = WebDriverWait(driver, 20).until(
                 EC.visibility_of_element_located(
                     (
@@ -214,68 +169,19 @@ def configurar_cep(driver):
 
             nome_loja = loja_atual.text.strip()
 
-            print(
-                f"🏪 Loja identificada: {nome_loja}"
-            )
-
-            # =====================================================
-            # 8. CONFIRMA ITAPECERICA
-            # =====================================================
-
+            # 8. Confirma se é Itapecerica
             if "itapecerica" in nome_loja.lower():
-
-                print(
-                    f"✅ Loja confirmada com sucesso: "
-                    f"{nome_loja}"
-                )
-
+                print(f"✅ CEP configurado com sucesso — Loja: {nome_loja}")
                 return nome_loja
 
-            else:
+            # Loja errada: tenta novamente
+            time.sleep(2)
 
-                print(
-                    f"⚠️ Loja incorreta: {nome_loja}"
-                )
+        except Exception:
+            time.sleep(2)
 
-                time.sleep(3)
-
-        except TimeoutException as e:
-
-            print(
-                f"⚠️ Timeout na tentativa "
-                f"{tentativa + 1}: {e}"
-            )
-
-            try:
-                driver.save_screenshot(
-                    f"erro_cep_{tentativa + 1}.png"
-                )
-            except:
-                pass
-
-            time.sleep(3)
-
-        except Exception as e:
-
-            print(
-                f"⚠️ Erro na tentativa "
-                f"{tentativa + 1}: {e}"
-            )
-
-            try:
-                driver.save_screenshot(
-                    f"erro_cep_{tentativa + 1}.png"
-                )
-            except:
-                pass
-
-            time.sleep(3)
-
-    print(
-        "❌ Falha ao configurar a loja "
-        "de Itapecerica da Serra."
-    )
-
+    # Se chegou aqui, todas as tentativas falharam
+    print("❌ Erro ao configurar o CEP — não foi possível selecionar a loja de Itapecerica da Serra.")
     return None
 
 # ===========================
