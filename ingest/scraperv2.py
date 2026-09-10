@@ -18,7 +18,7 @@ from supabase import create_client
 warnings.filterwarnings("ignore")
 
 CHROMEDRIVER = ChromeDriverManager().install()
-MAX_WORKERS = 2
+MAX_WORKERS = 5
 
 # ===========================
 # DRIVER
@@ -233,7 +233,12 @@ def processar_categoria(url):
                     link = f"https://www.atacadao.com.br{href}"
                     container = link_elem.find_parent("li") or link_elem.find_parent("article") or link_elem.find_parent("div")
                     
-                    preco_elem = container.select_one("p.text-lg.text-neutral-500.font-bold")
+                    # --- BUSCA DE PREÇO ---
+                    preco_elem = container.select_one("p.text-sm.text-neutral-500.font-bold")
+                    
+                    if not preco_elem or not preco_elem.text.strip():
+                        preco_elem = container.select_one("p.text-lg.text-neutral-500.font-bold")
+                    
                     preco = preco_elem.text.strip() if preco_elem else ""
 
                     # --- BUSCA DE IMAGEM ---
@@ -268,11 +273,23 @@ key = os.environ.get("SUPABASE_KEY")
 supabase = create_client(url_db, key) if url_db and key else None
 
 def salvar_no_supabase(lista_de_produtos):
-    try:
-        supabase.table("produtos_atacadao").insert(lista_de_produtos).execute()
-        print(f"\n✅ {len(lista_de_produtos)} produtos salvos no Supabase!")
-    except Exception as e:
-        print(f"\n❌ Erro ao salvar: {e}")
+    if not supabase:
+        print("\n❌ Supabase não configurado (faltam variáveis de ambiente).")
+        return
+
+    # Define o tamanho de cada lote para evitar timeout no Supabase
+    tamanho_lote = 1000
+    total_produtos = len(lista_de_produtos)
+    
+    print(f"\n🔄 Salvando {total_produtos} produtos no Supabase em lotes de {tamanho_lote}...")
+
+    for i in range(0, total_produtos, tamanho_lote):
+        lote = lista_de_produtos[i:i + tamanho_lote]
+        try:
+            supabase.table("produtos_atacadao").insert(lote).execute()
+            print(f"✅ Lote {int(i/tamanho_lote) + 1} enviado com sucesso ({min(i + tamanho_lote, total_produtos)}/{total_produtos})")
+        except Exception as e:
+            print(f"❌ Erro ao salvar o lote {int(i/tamanho_lote) + 1}: {e}")
 
 def main():
     with open("configs/urls.txt", "r") as f:
