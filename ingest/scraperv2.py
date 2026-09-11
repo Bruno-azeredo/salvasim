@@ -13,12 +13,16 @@ import warnings
 import time
 import re
 import os
-from supabase import create_client
+import io
+from google.cloud import storage
 
 warnings.filterwarnings("ignore")
 
 CHROMEDRIVER = ChromeDriverManager().install()
 MAX_WORKERS = 5
+
+# Configurações do Google Cloud Storage
+BUCKET_NAME = "atacadao-parquet"
 
 # ===========================
 # DRIVER
@@ -47,14 +51,12 @@ def configurar_cep(driver):
 
     for tentativa in range(tentativas_cep):
         try:
-            # Aguarda o carregamento da página
             WebDriverWait(driver, 30).until(
                 lambda d: d.execute_script(
                     "return document.readyState"
                 ) == "complete"
             )
 
-            # 1. Localiza o botão de regionalização
             botao_cep = WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located(
                     (
@@ -64,7 +66,6 @@ def configurar_cep(driver):
                 )
             )
 
-            # Garante que esteja visível
             driver.execute_script(
                 """
                 arguments[0].scrollIntoView({
@@ -77,7 +78,6 @@ def configurar_cep(driver):
 
             time.sleep(3)
 
-            # Tenta clicar normalmente
             try:
                 WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable(
@@ -89,13 +89,11 @@ def configurar_cep(driver):
                 ).click()
 
             except Exception:
-                # Fallback para JavaScript
                 driver.execute_script(
                     "arguments[0].click();",
                     botao_cep
                 )
 
-            # 2. Seleciona "Entrega em Casa"
             entrega = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (
@@ -110,7 +108,6 @@ def configurar_cep(driver):
                 entrega
             )
 
-            # 3. Preenche CEP
             input_cep = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (By.ID, "location-search")
@@ -121,7 +118,6 @@ def configurar_cep(driver):
             input_cep.clear()
             input_cep.send_keys("06855-400")
 
-            # 4. Preenche número
             numero = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (
@@ -135,7 +131,6 @@ def configurar_cep(driver):
             numero.clear()
             numero.send_keys("100")
 
-            # 5. Confirma
             confirmar = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
                     (
@@ -150,7 +145,6 @@ def configurar_cep(driver):
                 confirmar
             )
 
-            # 6. Aguarda o modal fechar
             WebDriverWait(driver, 20).until(
                 EC.invisibility_of_element_located(
                     (By.ID, "location-search")
@@ -167,15 +161,12 @@ def configurar_cep(driver):
             )
 
             nome_loja = loja_atual.text.strip()
-
             print(f"✅ CEP configurado com sucesso — {nome_loja}")
-
             return nome_loja
         
         except Exception:
             time.sleep(3)
 
-    # Se chegou aqui, todas as tentativas falharam
     print("❌ Erro ao configurar o CEP — não foi possível selecionar a loja de Itapecerica da Serra.")
     return None
 
@@ -235,7 +226,6 @@ def processar_categoria(url):
                     
                     # --- BUSCA DE PREÇO ---
                     preco_elem = container.select_one("p.text-sm.text-neutral-500.font-bold")
-                    
                     if not preco_elem or not preco_elem.text.strip():
                         preco_elem = container.select_one("p.text-lg.text-neutral-500.font-bold")
                     
@@ -265,31 +255,31 @@ def processar_categoria(url):
         driver.quit()
 
 # ===========================
-# MAIN E SUPABASE
+# GOOGLE CLOUD STORAGE (PARQUET)
 # ===========================
 
-url_db = os.environ.get("SUPABASE_URL")
-key = os.environ.get("SUPABASE_KEY")
-supabase = create_client(url_db, key) if url_db and key else None
-
-def salvar_no_supabase(lista_de_produtos):
-    if not supabase:
-        print("\n❌ Supabase não configurado (faltam variáveis de ambiente).")
-        return
-
-    # Define o tamanho de cada lote para evitar timeout no Supabase
-    tamanho_lote = 1000
-    total_produtos = len(lista_de_produtos)
+def salvar_historico_gcs(df_novo):
+    client = storage.Client()
+    bucket = client.bucket(BUCKET_NAME)
     
-    print(f"\n🔄 Salvando {total_produtos} produtos no Supabase em lotes de {tamanho_lote}...")
-
-    for i in range(0, total_produtos, tamanho_lote):
-        lote = lista_de_produtos[i:i + tamanho_lote]
-        try:
-            supabase.table("produtos_atacadao").insert(lote).execute()
-            print(f"✅ Lote {int(i/tamanho_lote) + 1} enviado com sucesso ({min(i + tamanho_lote, total_produtos)}/{total_produtos})")
-        except Exception as e:
-            print(f"❌ Erro ao salvar o lote {int(i/tamanho_lote) + 1}: {e}")
+    # Cria o nome do arquivo com base no ano e mês atual (ex: historico_2026-09.parquet)
+    nome_arquivo = f"historico_{datetime.now().strftime('%Y-%m')}.parquet"
+    blob = bucket.blob(nome_arquivo)
+    
+    df_final = df_novo
+    if blob.exists():
+        print(f"\n📥 Baixando histórico existente do GCS: {nome_arquivo}...")
+        conteudo_bytes = blob.download_as_bytes()
+        df_antigo = pd.read_parquet(io.BytesIO(conteudo_bytes))
+        df_final = pd.concat([df_antigo, df_novo]).drop_duplicates()
+    
+    buffer = io.BytesIO()
+    df_final.to_parquet(buffer, index=False)
+    buffer.seek(0)
+    
+    print(f"☁️ Enviando histórico atualizado para o Google Cloud Storage ({nome_arquivo})...")
+    blob.upload_from_file(buffer, content_type="application/octet-stream")
+    print("✅ Histórico salvo com sucesso no GCS!")
 
 def main():
     with open("configs/urls.txt", "r") as f:
@@ -311,6 +301,11 @@ def main():
 if __name__ == "__main__":
     inicio = time.time()
     dados = main()
+    
     if dados:
-        salvar_no_supabase(dados)
+        df_produtos = pd.DataFrame(dados)
+        salvar_historico_gcs(df_produtos)
+    else:
+        print("⚠️ Nenhum dado coletado nesta execução.")
+        
     print(f"\n⏱ Tempo total: {(time.time()-inicio)/60:.2f} min")

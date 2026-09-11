@@ -21,16 +21,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
-      - name: EXTRAIR PRODUTOS MERCADOS
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python teste2.py
         
-      - name: Gerar Imagens Promocionais das Top Ofertas
-        run: python integration/gerar_ofertas.py
+      - name: 1. Executar Scraper e Enviar para o GCS
+        run: |
+                # Cria um arquivo temporário com a chave JSON do GCP para a API do Google autenticar
+                echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
+                export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
+                
+                # Executa o script Python atualizado
+                python ingest/scraperv2.py
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+                GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
