@@ -22,7 +22,7 @@ CHROMEDRIVER = ChromeDriverManager().install()
 MAX_WORKERS = 5
 
 # Configurações do Google Cloud Storage
-BUCKET_NAME = "atacadao-parquet"
+BUCKET_NAME = "econ-itap"
 
 # ===========================
 # DRIVER
@@ -262,13 +262,16 @@ def salvar_historico_gcs(df_novo):
     client = storage.Client()
     bucket = client.bucket(BUCKET_NAME)
     
-    # Cria o nome do arquivo com base no ano e mês atual (ex: historico_2026-09.parquet)
-    nome_arquivo = f"historico_{datetime.now().strftime('%Y-%m')}.parquet"
+    # Gera o nome do arquivo usando a data de hoje (ex: historico_2026-09-11.parquet)
+    data_hoje = datetime.now().strftime('%Y-%m-%d')
+    nome_arquivo = f"historico_{data_hoje}.parquet"
     blob = bucket.blob(nome_arquivo)
     
     df_final = df_novo
+    
+    # Se por acaso já rodar mais de uma vez no mesmo dia, ele baixa o do dia, junta e remove duplicadas
     if blob.exists():
-        print(f"\n📥 Baixando histórico existente do GCS: {nome_arquivo}...")
+        print(f"\n📥 Baixando arquivo existente do dia no GCS: {nome_arquivo}...")
         conteudo_bytes = blob.download_as_bytes()
         df_antigo = pd.read_parquet(io.BytesIO(conteudo_bytes))
         df_final = pd.concat([df_antigo, df_novo]).drop_duplicates()
@@ -277,9 +280,9 @@ def salvar_historico_gcs(df_novo):
     df_final.to_parquet(buffer, index=False)
     buffer.seek(0)
     
-    print(f"☁️ Enviando histórico atualizado para o Google Cloud Storage ({nome_arquivo})...")
+    print(f"☁️ Enviando arquivo do dia para o Google Cloud Storage ({nome_arquivo})...")
     blob.upload_from_file(buffer, content_type="application/octet-stream")
-    print("✅ Histórico salvo com sucesso no GCS!")
+    print("✅ Arquivo diário salvo com sucesso no GCS!")
 
 def main():
     with open("configs/urls.txt", "r") as f:
