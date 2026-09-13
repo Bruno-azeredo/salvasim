@@ -259,22 +259,28 @@ def processar_categoria(url):
 # ===========================
 
 def salvar_historico_gcs(df_novo):
+    print("🔌 Iniciando cliente do Google Cloud Storage...")
     client = storage.Client()
-    bucket = client.bucket(BUCKET_NAME)
     
-    # Gera o nome do arquivo usando a data de hoje (ex: historico_2026-09-11.parquet)
+    bucket = client.bucket(BUCKET_NAME)
+    print(f"🪣 Acessando o bucket: {BUCKET_NAME}...")
+    
     data_hoje = datetime.now().strftime('%Y-%m-%d')
-    nome_arquivo = f"historico_{data_hoje}.parquet"
+    
+    # Adicionamos 'atacadao/' na frente para criar a estrutura de pastas no GCS
+    nome_arquivo = f"atacadao/historico_{data_hoje}.parquet"
     blob = bucket.blob(nome_arquivo)
     
     df_final = df_novo
     
-    # Se por acaso já rodar mais de uma vez no mesmo dia, ele baixa o do dia, junta e remove duplicadas
-    if blob.exists():
-        print(f"\n📥 Baixando arquivo existente do dia no GCS: {nome_arquivo}...")
-        conteudo_bytes = blob.download_as_bytes()
-        df_antigo = pd.read_parquet(io.BytesIO(conteudo_bytes))
-        df_final = pd.concat([df_antigo, df_novo]).drop_duplicates()
+    try:
+        if blob.exists():
+            print(f"📥 Baixando arquivo existente do dia no GCS: {nome_arquivo}...")
+            conteudo_bytes = blob.download_as_bytes()
+            df_antigo = pd.read_parquet(io.BytesIO(conteudo_bytes))
+            df_final = pd.concat([df_antigo, df_novo]).drop_duplicates()
+    except Exception as e:
+        print(f"⚠️ Aviso ao verificar arquivo existente (normal se for o primeiro do dia): {e}")
     
     buffer = io.BytesIO()
     df_final.to_parquet(buffer, index=False)
@@ -282,33 +288,4 @@ def salvar_historico_gcs(df_novo):
     
     print(f"☁️ Enviando arquivo do dia para o Google Cloud Storage ({nome_arquivo})...")
     blob.upload_from_file(buffer, content_type="application/octet-stream")
-    print("✅ Arquivo diário salvo com sucesso no GCS!")
-
-def main():
-    with open("configs/urls.txt", "r") as f:
-        urls = [l.strip() for l in f if l.strip()]
-
-    dados = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(processar_categoria, url): url for url in urls}
-        for future in as_completed(futures):
-            url = futures[future]
-            try:
-                resultado = future.result()
-                dados.extend(resultado)
-                print(f"✅ {url} -> {len(resultado)} produtos")
-            except Exception as e:
-                print(f"❌ Erro em {url}: {e}")
-    return dados
-
-if __name__ == "__main__":
-    inicio = time.time()
-    dados = main()
-    
-    if dados:
-        df_produtos = pd.DataFrame(dados)
-        salvar_historico_gcs(df_produtos)
-    else:
-        print("⚠️ Nenhum dado coletado nesta execução.")
-        
-    print(f"\n⏱ Tempo total: {(time.time()-inicio)/60:.2f} min")
+    print("✅ Arquivo diário salvo com sucesso na pasta do Atacadão!")
