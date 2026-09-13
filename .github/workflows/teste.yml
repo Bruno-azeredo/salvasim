@@ -1,8 +1,9 @@
-name: Execução Única - Sincronização Shopee
+name: Extração Bronze - Extraindo dados do Atacadão
 
 on:
-  workflow_dispatch: # Permite rodar manualmente pelo botão no GitHub
-
+  workflow_dispatch: # Permite rodar manualmente
+  schedule:
+    - cron: '0 4 * * *' # Roda todo dia às 09:00 UTC
 jobs:
   sincronizar-shopee:
     runs-on: ubuntu-latest
