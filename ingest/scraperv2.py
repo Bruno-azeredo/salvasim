@@ -258,16 +258,20 @@ def processar_categoria(url):
 # GOOGLE CLOUD STORAGE (PARQUET)
 # ===========================
 
-def salvar_historico_gcs(df_novo):
+def salvar_historico_gcs(dados_ou_df):
     print("🔌 Iniciando cliente do Google Cloud Storage...")
-    client = storage.Client()
     
+    # Se recebeu uma lista (vinda do main), converte para DataFrame do Pandas
+    if isinstance(dados_ou_df, list):
+        df_novo = pd.DataFrame(dados_ou_df)
+    else:
+        df_novo = dados_ou_df
+        
+    client = storage.Client()
     bucket = client.bucket(BUCKET_NAME)
     print(f"🪣 Acessando o bucket: {BUCKET_NAME}...")
     
     data_hoje = datetime.now().strftime('%Y-%m-%d')
-    
-    # Adicionamos 'atacadao/' na frente para criar a estrutura de pastas no GCS
     nome_arquivo = f"atacadao/historico_{data_hoje}.parquet"
     blob = bucket.blob(nome_arquivo)
     
@@ -289,7 +293,6 @@ def salvar_historico_gcs(df_novo):
     print(f"☁️ Enviando arquivo do dia para o Google Cloud Storage ({nome_arquivo})...")
     blob.upload_from_file(buffer, content_type="application/octet-stream")
     print("✅ Arquivo diário salvo com sucesso na pasta do Atacadão!")
-
 
 def main():
     with open("configs/urls.txt", "r") as f:
