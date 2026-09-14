@@ -289,3 +289,24 @@ def salvar_historico_gcs(df_novo):
     print(f"☁️ Enviando arquivo do dia para o Google Cloud Storage ({nome_arquivo})...")
     blob.upload_from_file(buffer, content_type="application/octet-stream")
     print("✅ Arquivo diário salvo com sucesso na pasta do Atacadão!")
+
+
+# ===========================
+# EXECUÇÃO PRINCIPAL
+# ===========================
+
+if __name__ == "__main__":
+    print("🚀 Iniciando pipeline de extração do Atacadão...")
+    
+    # Defina aqui a URL da categoria que deseja raspar (exemplo)
+    url_alvo = "https://www.atacadao.com.br/mercearia/arroz-e-feijao"
+    
+    print(f"🔍 Raspando categoria: {url_alvo}")
+    lista_produtos = processar_categoria(url_alvo)
+    
+    if lista_produtos:
+        print(f"📦 Total de produtos coletados: {len(lista_produtos)}")
+        df_novo = pd.DataFrame(lista_produtos)
+        salvar_historico_gcs(df_novo)
+    else:
+        print("⚠️ Nenhum produto foi retornado pelo scraper.")    
