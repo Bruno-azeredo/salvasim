@@ -291,22 +291,25 @@ def salvar_historico_gcs(df_novo):
     print("✅ Arquivo diário salvo com sucesso na pasta do Atacadão!")
 
 
-# ===========================
-# EXECUÇÃO PRINCIPAL
-# ===========================
+def main():
+    with open("configs/urls.txt", "r") as f:
+        urls = [l.strip() for l in f if l.strip()]
+
+    dados = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(processar_categoria, url): url for url in urls}
+        for future in as_completed(futures):
+            url = futures[future]
+            try:
+                resultado = future.result()
+                dados.extend(resultado)
+                print(f"✅ {url} -> {len(resultado)} produtos")
+            except Exception as e:
+                print(f"❌ Erro em {url}: {e}")
+    return dados
 
 if __name__ == "__main__":
-    print("🚀 Iniciando pipeline de extração do Atacadão...")
-    
-    # Defina aqui a URL da categoria que deseja raspar (exemplo)
-    url_alvo = "https://www.atacadao.com.br/mercearia/arroz-e-feijao"
-    
-    print(f"🔍 Raspando categoria: {url_alvo}")
-    lista_produtos = processar_categoria(url_alvo)
-    
-    if lista_produtos:
-        print(f"📦 Total de produtos coletados: {len(lista_produtos)}")
-        df_novo = pd.DataFrame(lista_produtos)
-        salvar_historico_gcs(df_novo)
-    else:
-        print("⚠️ Nenhum produto foi retornado pelo scraper.")    
+    inicio = time.time()
+    dados = main()
+    if dados:
+        salvar_historico_gcs(dados)
