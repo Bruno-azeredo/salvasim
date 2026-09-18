@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 # =========================
 # CONFIGURAÇÕES DO GCP
 # =========================
-PROJECT_ID = "econ-itap"
+PROJECT_ID = "economiza-itap"
 DATASET_BRONZE = "bronze"
 DATASET_SILVER = "atacadao_silver"
 TABELA_SILVER = "s_inge_prod_shop"
