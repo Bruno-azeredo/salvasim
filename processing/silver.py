@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore")
 # =========================
 PROJECT_ID = "economiza-itap"
 DATASET_BRONZE = "bronze"
-DATASET_SILVER = "atacadao_silver"
+DATASET_SILVER = "silver"
 TABELA_SILVER = "s_inge_prod_shop"
 
 # =========================
