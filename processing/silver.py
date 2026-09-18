@@ -3,18 +3,18 @@ import re
 from datetime import datetime
 import hashlib
 import pandas as pd
-from supabase import create_client
+from google.cloud import bigquery
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # =========================
-# CONFIGURAÇÕES DO SUPABASE
+# CONFIGURAÇÕES DO GCP
 # =========================
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise Exception("As variáveis de ambiente SUPABASE_URL e SUPABASE_KEY não foram configuradas.")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+PROJECT_ID = "econ-itap"
+DATASET_BRONZE = "bronze"
+DATASET_SILVER = "atacadao_silver"
+TABELA_SILVER = "s_inge_prod_shop"
 
 # =========================
 # CONFIG DE NEGÓCIO
@@ -83,21 +83,6 @@ CLASSIFICACAO_FISCAL = {
 # =========================
 # FUNÇÕES AUXILIARES
 # =========================
-def fetch_all_from_supabase(table_name):
-    """Busca todos os registros de uma tabela do Supabase com paginação"""
-    all_data = []
-    page_size = 1000
-    start = 0
-    while True:
-        response = supabase.table(table_name).select("*").range(start, start + page_size - 1).execute()
-        if not response.data:
-            break
-        all_data.extend(response.data)
-        if len(response.data) < page_size:
-            break
-        start += page_size
-    return pd.DataFrame(all_data)
-
 def limpar_preco(preco):
     if pd.isna(preco):
         return 0.0
@@ -169,13 +154,16 @@ def preencher_classificacao(subcategoria):
 # PIPELINE PRINCIPAL
 # =========================
 def run():
-    print("🚀 Iniciando processamento Silver via Supabase...")
+    print("🚀 Iniciando processamento Silver via BigQuery...")
 
-    # 1. Carregar dados RAW do Supabase (Substitua 'raw_historico' se o nome da sua tabela for diferente)
-    df = fetch_all_from_supabase("produtos_atacadao")
+    # 1. Carregar dados RAW direto da tabela Bronze no BigQuery
+    client = bigquery.Client(project=PROJECT_ID)
+    query_bronze = f"SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_bronze`"
+    
+    df = client.query(query_bronze).to_dataframe()
 
     if df.empty:
-        print("❌ Nenhum registro encontrado na tabela 'raw_historico' do Supabase.")
+        print("❌ Nenhum registro encontrado na tabela Bronze do BigQuery.")
         return
 
     print(f"📊 Registros RAW obtidos: {len(df)}")
@@ -186,30 +174,16 @@ def run():
     df["data_extracao"] = pd.to_datetime(df["data_extracao"])
     df["imagem_url"] = df["imagem_url"].fillna("")
 
-    # 3. Carregar Dimensão de Produtos do Supabase usando o ID como chave
-    try:
-        df_dim = fetch_all_from_supabase("dim_products")
-    except Exception as e:
-        print(f"⚠️ Aviso ao buscar dimensão: {e}. Prosseguindo sem ela.")
-        df_dim = pd.DataFrame()
-
-    # Gera o ID na base atual para poder cruzar com a dimensão
     df["id"] = df["nome_normalizado"].apply(gerar_id)
 
-    if not df_dim.empty and "id" in df_dim.columns:
-        # Pega apenas as colunas úteis da dimensão
-        cols_to_merge = [c for c in ["id", "descricao", "vender_como_kit", "quantidade_kit"] if c in df_dim.columns]
-        df = df.merge(df_dim[cols_to_merge], on="id", how="left")
-        print("🔗 Merge com DIM via ID realizado com sucesso.")
-    else:
-        df["descricao"] = None
-        df["vender_como_kit"] = False
-        df["quantidade_kit"] = 1
+    df["descricao"] = None
+    df["vender_como_kit"] = False
+    df["quantidade_kit"] = 1
 
-    df["vender_como_kit"] = df["vender_como_kit"].fillna(False).astype(bool)
-    df["quantidade_kit"] = df["quantidade_kit"].fillna(1).astype(int)
+    df["vender_como_kit"] = df["vender_como_kit"].astype(bool)
+    df["quantidade_kit"] = df["quantidade_kit"].astype(int)
 
-    # 4. Menor preço histórico por produto
+    # 4. Menor preço histórico por produto considerando toda a base Bronze
     df_historico = df.copy()
     menor = (
         df_historico
@@ -276,30 +250,21 @@ def run():
     df_final["vender_como_kit"] = df["vender_como_kit"]
     df_final["quantidade_kit"] = df["quantidade_kit"]
 
-    # Remover eventuais duplicatas de ID antes de enviar
     df_final = df_final.drop_duplicates(subset=["id"])
 
-    # 9. Envio para a tabela `silver_products` via UPSERT
-    print("☁️ Enviando dados tratados para a tabela `silver_products` no Supabase...")
+    # 9. Envio para a tabela Silver no BigQuery (`s_inge_prod_shop`)
+    print(f"☁️ Enviando dados tratados para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
     
-    # Substitui NaN, inf, -inf por None de forma segura para o JSON do Python
-    df_final = df_final.astype(object).where(pd.notnull(df_final), None)
-    data_list = []
+    table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
-    for row in df_final.to_dict(orient="records"):
-        # Garante que nenhum float "inf" ou "nan" escape para o dicionário final
-        clean_row = {
-            k: (None if pd.isna(v) or (isinstance(v, float) and (v == float('inf') or v == float('-inf'))) else v)
-            for k, v in row.items()
-        }
-        data_list.append(clean_row)
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_TRUNCATE" # Substitui os dados anteriores mantendo sempre a última extração limpa
+    )
 
-    batch_size = 500
-    for i in range(0, len(data_list), batch_size):
-        batch = data_list[i:i+batch_size]
-        supabase.table("silver_products").upsert(batch).execute()
+    job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
+    job.result()
 
-    print(f"✅ Sucesso! {len(data_list)} registros atualizados/inseridos na `silver_products`.")
+    print(f"✅ Sucesso! {len(df_final)} registros atualizados na tabela `{TABELA_SILVER}` do BigQuery.")
 
 if __name__ == "__main__":
     run()
