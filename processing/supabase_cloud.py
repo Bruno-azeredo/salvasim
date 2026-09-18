@@ -8,8 +8,8 @@ from google.cloud import storage
 # =========================
 # CONFIGURAÇÕES
 # =========================
-SUPABASE_URL = os.getenv("SUPABASE_URL", "SUA_SUPABASE_URL_AQUI")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "SUA_SUPABASE_KEY_AQUI")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 BUCKET_NAME = "econ-itap"  # Nome do seu bucket
 DESTINO_CAMINHO = "atacadao"
