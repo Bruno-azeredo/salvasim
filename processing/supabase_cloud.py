@@ -11,34 +11,42 @@ from google.cloud import storage
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-BUCKET_NAME = "econ-itap"  # Nome do seu bucket
+BUCKET_NAME = "econ-itap"
 DESTINO_CAMINHO = "atacadao"
 
 def exportar_supabase_particionado():
     print("🔌 Conectando ao Supabase...")
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    print("📥 Buscando dados da tabela `produtos_atacadao` com paginação...")
+    print("📥 Buscando dados da tabela `produtos_atacadao` usando paginação por ID...")
     
     todos_dados = []
     chunk_size = 1000
-    start = 0
+    last_id = 0  # Começa do ID 0
     
     while True:
-        end = start + chunk_size - 1
-        response = supabase.table("produtos_atacadao").select("*").range(start, end).execute()
+        # Pega os próximos 1000 registros estritamente maiores que o último ID processado
+        response = (
+            supabase.table("produtos_atacadao")
+            .select("*")
+            .order("id", desc=False)
+            .gt("id", last_id)
+            .limit(chunk_size)
+            .execute()
+        )
         
         dados_chunk = response.data
         if not dados_chunk:
             break
             
         todos_dados.extend(dados_chunk)
-        print(f"📦 Baixados registros de {start} até {start + len(dados_chunk) - 1}...")
+        
+        # Atualiza o last_id com o maior ID do lote atual
+        last_id = dados_chunk[-1]["id"]
+        print(f"📦 Lote processado até o ID: {last_id} (Total acumulado: {len(todos_dados)})")
         
         if len(dados_chunk) < chunk_size:
-            break
-            
-        start += chunk_size
+            break  # Chegou ao fim da tabela
 
     if not todos_dados:
         print("❌ Nenhum dado encontrado na tabela do Supabase.")
@@ -66,11 +74,9 @@ def exportar_supabase_particionado():
         df_dia = df[df["data_extracao_str"] == data_str].copy()
         df_dia = df_dia.drop(columns=["data_extracao_str"])
 
-        # Mantém o padrão de nome do arquivo (ex: historico_2026-09-18.parquet) dentro da pasta da data
         nome_arquivo = f"historico_{data_str}.parquet"
         caminho_completo = f"{DESTINO_CAMINHO}/data_extracao={data_str}/{nome_arquivo}"
 
-        # Converte para Parquet em memória
         buffer = io.BytesIO()
         df_dia.to_parquet(buffer, index=False, engine="pyarrow")
         buffer.seek(0)
