@@ -24,16 +24,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
-      - name: 1. Executar Scraper e Enviar para o GCS / Bronze
-        run: |
-          # Cria um arquivo temporário com a chave JSON do GCP para a API do Google autenticar
-          echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
-          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
-          
-          # Executa o script Python atualizado da Bronze
-          python -u ingest/scraperv2.py
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
 
       - name: 2. Executar Pipeline Silver (BigQuery - s_inge_prod_shop)
         run: |
