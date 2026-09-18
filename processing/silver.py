@@ -158,7 +158,7 @@ def run():
 
     # 1. Carregar dados RAW direto da tabela Bronze no BigQuery
     client = bigquery.Client(project=PROJECT_ID)
-    query_bronze = f"SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_bronze`"
+    query_bronze = f"SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_atacadao`"
     
     df = client.query(query_bronze).to_dataframe()
 
