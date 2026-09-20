@@ -32,17 +32,28 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
           
           # Executa o script Python atualizado
-          python -u ingest/scraperv2.py
+          python -u ingest/scraper_atacadao.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
 
-      - name: 2. Executar Pipeline Silver (BigQuery)
+      - name: 2. Executar Pipeline Silver (s_inge_prod_shop)
         run: |
           # Cria o arquivo de credenciais para este passo
           echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
           export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
           
-          # Executa o script Silver baseado no erro anterior
-          python -u processing/silver.py
+          # Executa o script Silver anterior
+          python -u processing/silver_shopee.py
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
+
+      - name: 3. Executar Pipeline Silver (s_dim_prod)
+        run: |
+          # Cria o arquivo de credenciais para este passo
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
+          
+          # Executa o novo script para gerar a dimensão de produtos distintos
+          python -u processing/s_dim_prod.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}

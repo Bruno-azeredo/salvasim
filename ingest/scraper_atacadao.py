@@ -272,7 +272,9 @@ def salvar_historico_gcs(dados_ou_df):
     print(f"🪣 Acessando o bucket: {BUCKET_NAME}...")
     
     data_hoje = datetime.now().strftime('%Y-%m-%d')
-    nome_arquivo = f"atacadao/historico_{data_hoje}.parquet"
+    
+    # ➔ Atualizado para o formato particionado Hive-style mantendo o padrão do nome
+    nome_arquivo = f"atacadao/data_extracao={data_hoje}/historico_{data_hoje}.parquet"
     blob = bucket.blob(nome_arquivo)
     
     df_final = df_novo
@@ -287,12 +289,12 @@ def salvar_historico_gcs(dados_ou_df):
         print(f"⚠️ Aviso ao verificar arquivo existente (normal se for o primeiro do dia): {e}")
     
     buffer = io.BytesIO()
-    df_final.to_parquet(buffer, index=False)
+    df_final.to_parquet(buffer, index=False, engine="pyarrow")
     buffer.seek(0)
     
     print(f"☁️ Enviando arquivo do dia para o Google Cloud Storage ({nome_arquivo})...")
     blob.upload_from_file(buffer, content_type="application/octet-stream")
-    print("✅ Arquivo diário salvo com sucesso na pasta do Atacadão!")
+    print("✅ Arquivo diário salvo com sucesso na pasta particionada do Atacadão!")
 
 def main():
     with open("configs/urls.txt", "r") as f:
