@@ -39,14 +39,29 @@ def run():
     # 2. Conectar ao Supabase
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # Converter o DataFrame para dicionário para envio em lote (batch upsert)
-    # Substituímos valores NaN por None para o PostgreSQL aceitar como NULL
+    # Tratamento rigoroso de tipos para evitar erros de serialização no Supabase
+    if "created_at" in df.columns:
+        df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Substitui valores nulos/NaN por None (convertido para NULL no PostgreSQL)
     df = df.where(pd.notnull(df), None)
     
-    # Garantir que as colunas de data/uuid sejam tratadas como string/json compatível
-    registros = df.to_dict(orient="records")
+    registros_raw = df.to_dict(orient="records")
 
-    # 3. Enviar em lotes para o Supabase (Upsert baseado em url_produto ou id_produto)
+    # Limpeza final de tipos numpy/pandas (garante tipos primitivos do Python)
+    registros = []
+    for reg in registros_raw:
+        clean_reg = {}
+        for k, v in reg.items():
+            if pd.isna(v):
+                clean_reg[k] = None
+            elif hasattr(v, "item"):  # Trata int64, float64 do numpy
+                clean_reg[k] = v.item()
+            else:
+                clean_reg[k] = v
+        registros.append(clean_reg)
+
+    # 3. Enviar em lotes para o Supabase (Upsert baseado em url_produto)
     print("☁️ Enviando dados para o Supabase...")
     
     tamanho_lote = 500

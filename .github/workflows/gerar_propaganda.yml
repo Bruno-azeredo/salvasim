@@ -14,8 +14,8 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: '3.11'
+          cache: 'pip
 
       - name: Instalar dependências
         run: |
@@ -31,5 +31,16 @@ jobs:
           
           # Executa o novo script para gerar a dimensão de produtos distintos
           python -u processing/dim_prod.py
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
+
+      - name: 4. supabase
+        run: |
+          # Cria o arquivo de credenciais para este passo
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
+          
+          # Executa o novo script para gerar a dimensão de produtos distintos
+          python -u processing/prod_supabase.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
