@@ -97,23 +97,14 @@ def run():
     
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
-    # Definimos explicitamente que a tabela deve ser apagada e recriada com o esquema do dataframe atual
-    job_config = bigquery.LoadJobConfig(
-        write_disposition="WRITE_TRUNCATE",
-        autodetect=True
-    )
+    # Abordagem segura: Apaga a tabela existente via DDL e cria novamente vazia, 
+    # evitando qualquer conflito de LoadJobConfig obsoleto no runner do GitHub.
+    drop_query = f"DROP TABLE IF EXISTS `{table_id}`;"
+    client.query(drop_query).result()
 
-    job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
-    job.result()
-
-    print(f"✅ Sucesso! {len(df_final)} produtos atualizados no BigQuery.")
-    # 5. Envio para a tabela Silver no BigQuery (`s_dim_prod`)
-    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
-    
-    table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
-    
+    # Carrega os dados usando append em uma tabela recém-criada (limpa)
     job_config = bigquery.LoadJobConfig(
-        write_disposition="WRITE_TRUNCATE"
+        write_disposition="WRITE_APPEND"
     )
 
     job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
