@@ -71,8 +71,8 @@ def run():
     df_final["imagem_url"] = df_recente["imagem_url"]
     df_final["url_produto"] = df_recente["link"]
     
-    # Coluna de descrição deixada em branco/nula para preenchimento futuro via IA
-    df_final["descricao"] = None
+    # Garantir explicitamente que a coluna descricao seja do tipo object/string para o BigQuery
+    df_final["descricao"] = pd.Series([None] * len(df_final), dtype="string")
     
     df_final["categoria"] = df_recente.get("categoria", "")
     df_final["subcategoria"] = df_recente.get("subcategoria", "")
@@ -87,7 +87,10 @@ def run():
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
     job_config = bigquery.LoadJobConfig(
-        write_disposition="WRITE_TRUNCATE" # Substitui os dados mantendo o catálogo sempre limpo e atualizado com o último estado
+        write_disposition="WRITE_TRUNCATE", # Substitui os dados mantendo o catálogo sempre limpo
+        schema_update_options=[
+            bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION
+        ]
     )
 
     job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)

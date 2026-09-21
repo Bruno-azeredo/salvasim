@@ -23,8 +23,13 @@ jobs:
           pip install -r requirements.txt
           
         
-      - name: Gerar Imagens Promocionais das Top Ofertas
-        run: python integration/gerar_ofertas.py
+      - name: 3. Executar Pipeline Silver (s_dim_prod)
+        run: |
+          # Cria o arquivo de credenciais para este passo
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
+          
+          # Executa o novo script para gerar a dimensão de produtos distintos
+          python -u processing/s_dim_prod.py
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
