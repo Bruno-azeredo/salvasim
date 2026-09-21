@@ -1,11 +1,33 @@
-import pandas as pd
 import os
+import re
 from datetime import datetime
-from supabase import create_client
+import hashlib
+import pandas as pd
+from google.cloud import bigquery
+from supabase import create_client, Client
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # =========================
-# FUNÇÃO AUXILIAR DE PAGINAÇÃO
+# CONFIGURAÇÕES DO GCP E SUPABASE
 # =========================
+PROJECT_ID = "economiza-itap"
+DATASET_BRONZE = "bronze"
+DATASET_SILVER = "silver"
+TABELA_SILVER = "s_dim_prod"
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+# =========================
+# FUNÇÕES AUXILIARES
+# =========================
+def gerar_id(link):
+    if not isinstance(link, str) or not link.strip():
+        return None
+    return hashlib.md5(link.encode()).hexdigest()
+
 def fetch_all_from_supabase(supabase_client, table_name):
     """Busca todos os registros de uma tabela do Supabase com paginação"""
     all_data = []
@@ -22,123 +44,97 @@ def fetch_all_from_supabase(supabase_client, table_name):
     return pd.DataFrame(all_data)
 
 # =========================
-# REGRAS DE KIT
-# =========================
-def definir_kit(preco):
-    if preco < 10:
-        return pd.Series({
-            "vender_como_kit": True,
-            "quantidade_kit": 4
-        })
-    elif preco < 20:
-        return pd.Series({
-            "vender_como_kit": True,
-            "quantidade_kit": 2
-        })
-    return pd.Series({
-        "vender_como_kit": False,
-        "quantidade_kit": 1
-    })
-
-# =========================
-# PIPELINE
+# PIPELINE PRINCIPAL
 # =========================
 def run():
-    print("🚀 Atualizando dimensão de produtos no Supabase...")
+    print("🚀 Iniciando processamento da dimensão de produtos (BigQuery)...")
 
-    url_db = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
+    # 1. Carregar dados RAW direto da tabela Bronze no BigQuery
+    client = bigquery.Client(project=PROJECT_ID)
+    query_bronze = f"SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_atacadao`"
     
-    if not url_db or not key:
-        print("❌ Credenciais do Supabase não encontradas nas variáveis de ambiente.")
+    df = client.query(query_bronze).to_dataframe()
+
+    if df.empty:
+        print("❌ Nenhum registro encontrado na tabela Bronze do BigQuery.")
         return
 
-    supabase = create_client(url_db, key)
+    print(f"📊 Registros RAW obtidos da Bronze: {len(df)}")
 
-    # 1. Lê a camada silver diretamente do Supabase
-    print("📥 Buscando dados da tabela `silver_products` no Supabase...")
-    df_silver = fetch_all_from_supabase(supabase, "silver_products")
+    # 2. Tratamentos iniciais
+    df["data_extracao"] = pd.to_datetime(df["data_extracao"])
+    df["imagem_url"] = df["imagem_url"].fillna("")
+    df["link"] = df["link"].fillna("")
+    df["nome"] = df["nome"].fillna("")
 
-    if df_silver.empty:
-        print("❌ Nenhum registro encontrado na tabela `silver_products`. Execute o silver.py primeiro.")
+    # Remover linhas sem link válido
+    df = df[df["link"] != ""].copy()
+
+    # 3. Considerar sempre a última aparição do produto (por link)
+    print("🔍 Filtrando a última aparição de cada produto...")
+    df = df.sort_values(by="data_extracao", ascending=False)
+    df_recente = df.drop_duplicates(subset=["link"], keep="first").copy()
+    print(f"📦 Produtos distintos encontrados: {len(df_recente)}")
+
+    # 4. Montagem do DataFrame Final para a Dimensão
+    df_final = pd.DataFrame()
+    df_final["id_produto"] = df_recente["link"].apply(gerar_id)
+    df_final["nome_produto"] = df_recente["nome"]
+    df_final["imagem_url"] = df_recente["imagem_url"]
+    df_final["url_produto"] = df_recente["link"]
+    
+    # Garantir explicitamente que a coluna descricao seja string/nula
+    df_final["descricao"] = pd.Series([None] * len(df_final), dtype="string")
+    
+    df_final["categoria"] = df_recente.get("categoria", "")
+    df_final["subcategoria"] = df_recente.get("subcategoria", "")
+    df_final["created_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    df_final = df_final.drop_duplicates(subset=["id_produto"])
+
+    # 5. Envio para a tabela Silver no BigQuery (`s_dim_prod`)
+    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
+    
+    table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
+    job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")
+
+    job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
+    job.result()
+    print(f"✅ Sucesso! {len(df_final)} produtos atualizados no BigQuery.")
+
+    # =========================
+    # 6. SINCRONIZAÇÃO COM O SUPABASE
+    # =========================
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("⚠️ Credenciais do Supabase não encontradas. Sincronização ignorada.")
         return
 
-    # Produtos únicos da extração atual
-    df_unique = df_silver[
-        ["id", "nome_produto", "preco_custo"]
-    ].drop_duplicates("id").copy()
+    print("🔄 Iniciando sincronização com o Supabase...")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # 2. Busca a dimensão atual diretamente do Supabase
-    df_base = fetch_all_from_supabase(supabase, "dim_products")
+    # Prepara os registros convertendo para dicionários limpos
+    df_sync = df_final.where(pd.notnull(df_final), None)
+    registros = df_sync.to_dict(orient="records")
 
-    if not df_base.empty:
-        df_base["vender_como_kit"] = df_base["vender_como_kit"].fillna(False).astype(bool)
-        df_base["quantidade_kit"] = df_base["quantidade_kit"].fillna(1).astype(int)
+    dados_limpos = []
+    for reg in registros:
+        clean_reg = {}
+        for k, v in reg.items():
+            if pd.isna(v):
+                clean_reg[k] = None
+            elif hasattr(v, "item"):
+                clean_reg[k] = v.item()
+            else:
+                clean_reg[k] = v
+        dados_limpos.append(clean_reg)
 
-    # Identifica IDs existentes na base do Supabase
-    ids_existentes = set(df_base["id"]) if not df_base.empty else set()
+    # Envio em lotes (Upsert baseado em url_produto ou id_produto)
+    batch_size = 500
+    for i in range(0, len(dados_limpos), batch_size):
+        batch = dados_limpos[i:i + batch_size]
+        supabase.table("produtos").upsert(batch, on_conflict="url_produto").execute()
 
-    registros_para_salvar = []
-    data_atual = datetime.now().isoformat()
-
-    # 3. Processa apenas os produtos novos
-    novos = df_unique[~df_unique["id"].isin(ids_existentes)].copy()
-    print(f"🆕 Novos produtos encontrados: {len(novos)}")
-
-    if len(novos) > 0:
-        novos["descricao"] = None
-        novos["refrigerado"] = False
-
-        # Define o kit para os novos produtos
-        kit_info = novos["preco_custo"].apply(definir_kit)
-        novos["vender_como_kit"] = kit_info["vender_como_kit"]
-        novos["quantidade_kit"] = kit_info["quantidade_kit"]
-
-        for _, row in novos.iterrows():
-            registro = {
-                "id": row["id"],
-                "nome_produto": row["nome_produto"],
-                "descricao": row["descricao"],
-                "refrigerado": row["refrigerado"],
-                "vender_como_kit": row["vender_como_kit"],
-                "quantidade_kit": row["quantidade_kit"],
-                "data_criacao": data_atual,
-                "data_atualizacao": None
-            }
-            registros_para_salvar.append(registro)
-
-    # 4. Limpeza estrita de tipos e envio via UPSERT para o Supabase
-    if len(registros_para_salvar) > 0:
-        dados_limpos = []
-        for reg in registros_para_salvar:
-            clean_reg = {}
-            for k, v in reg.items():
-                if pd.isna(v) or (isinstance(v, float) and (v == float('inf') or v == float('-inf'))):
-                    clean_reg[k] = None
-                elif hasattr(v, "item"):
-                    clean_reg[k] = v.item()
-                else:
-                    clean_reg[k] = v
-            dados_limpos.append(clean_reg)
-
-        batch_size = 500
-        for i in range(0, len(dados_limpos), batch_size):
-            batch = dados_limpos[i:i+batch_size]
-            supabase.table("dim_products").upsert(batch).execute()
-            
-        print(f"✅ {len(dados_limpos)} novos produtos salvos no Supabase!")
-    else:
-        print("ℹ️ Nenhum produto novo para adicionar à dimensão.")
-
-    # =========================
-    # LOGS FINAIS
-    # =========================
-    df_final = fetch_all_from_supabase(supabase, "dim_products")
-
-    print(f"\n📊 Total geral de produtos na dimensão (Supabase): {len(df_final)}")
-    total_kits = int(df_final["vender_como_kit"].sum()) if not df_final.empty and "vender_como_kit" in df_final.columns else 0
-    print(f"🎁 Produtos configurados como kit: {total_kits}")
-    print(f"📦 Produtos unitários: {len(df_final) - total_kits}")
+    print(f"✅ Sincronização com o Supabase concluída com sucesso! ({len(dados_limpos)} registos)")
 
 if __name__ == "__main__":
     run()
