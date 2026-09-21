@@ -79,19 +79,34 @@ def run():
     # 4. Montagem do DataFrame Final para a Dimensão
     df_final = pd.DataFrame()
     df_final["id_produto"] = df_recente["link"].apply(gerar_id)
-    df_final["nome_produto"] = df_recente["nome"]
-    df_final["imagem_url"] = df_recente["imagem_url"]
-    df_final["url_produto"] = df_recente["link"]
+    df_final["nome_produto"] = df_recente["nome"].astype(str)
+    df_final["imagem_url"] = df_recente["imagem_url"].astype(str)
+    df_final["url_produto"] = df_recente["link"].astype(str)
     
-    # Garantir explicitamente que a coluna descricao seja string/nula
-    df_final["descricao"] = pd.Series([None] * len(df_final), dtype="string")
+    # Forçar explicitamente a coluna descricao como object/string contendo None
+    df_final["descricao"] = [None] * len(df_final)
     
-    df_final["categoria"] = df_recente.get("categoria", "")
-    df_final["subcategoria"] = df_recente.get("subcategoria", "")
+    df_final["categoria"] = df_recente.get("categoria", "").astype(str)
+    df_final["subcategoria"] = df_recente.get("subcategoria", "").astype(str)
     df_final["created_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     df_final = df_final.drop_duplicates(subset=["id_produto"])
 
+    # 5. Envio para a tabela Silver no BigQuery (`s_dim_prod`)
+    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
+    
+    table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
+    
+    # Definimos explicitamente que a tabela deve ser apagada e recriada com o esquema do dataframe atual
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_TRUNCATE",
+        autodetect=True
+    )
+
+    job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
+    job.result()
+
+    print(f"✅ Sucesso! {len(df_final)} produtos atualizados no BigQuery.")
     # 5. Envio para a tabela Silver no BigQuery (`s_dim_prod`)
     print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
     
@@ -105,7 +120,7 @@ def run():
     job.result()
 
     print(f"✅ Sucesso! {len(df_final)} produtos atualizados na tabela `{TABELA_SILVER}` do BigQuery.")
-    
+
     # =========================
     # 6. SINCRONIZAÇÃO COM O SUPABASE
     # =========================
