@@ -22,16 +22,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
-      - name: 3. Executar Pipeline Silver (s_dim_prod no BigQuery)
-        run: |
-          # Cria o arquivo de credenciais para este passo
-          echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
-          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
-          
-          # Executa o script que processa a dimensão no BigQuery
-          python -u processing/dim_prod.py
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
+
 
       - name: 4. Sincronizar com o Supabase
         run: |
