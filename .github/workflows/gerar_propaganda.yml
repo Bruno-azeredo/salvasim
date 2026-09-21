@@ -30,6 +30,6 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
           
           # Executa o novo script para gerar a dimensão de produtos distintos
-          python -u processing/s_dim_prod.py
+          python -u processing_dim_prod.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
