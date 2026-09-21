@@ -92,26 +92,58 @@ def run():
 
     df_final = df_final.drop_duplicates(subset=["id_produto"])
 
-    # 5. Envio para a tabela Silver no BigQuery (`s_dim_prod`)
-    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
+    # 5. Envio para a tabela Silver no BigQuery via SQL puro (Evita qualquer LoadJobConfig legado)
+    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery via SQL...")
     
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
-    # Abordagem segura: Apaga a tabela existente via DDL e cria novamente vazia, 
-    # evitando qualquer conflito de LoadJobConfig obsoleto no runner do GitHub.
-    drop_query = f"DROP TABLE IF EXISTS `{table_id}`;"
-    client.query(drop_query).result()
+    # Recria a tabela limpa
+    client.query(f"DROP TABLE IF EXISTS `{table_id}`;").result()
+    
+    create_table_sql = f"""
+        CREATE TABLE `{table_id}` (
+            id_produto STRING,
+            nome_produto STRING,
+            imagem_url STRING,
+            url_produto STRING,
+            descricao STRING,
+            categoria STRING,
+            subcategoria STRING,
+            created_at TIMESTAMP
+        );
+    """
+    client.query(create_table_sql).result()
 
-    # Carrega os dados usando append em uma tabela recém-criada (limpa)
-    job_config = bigquery.LoadJobConfig(
-        write_disposition="WRITE_APPEND"
-    )
+    # Insere os dados em lotes via SQL para evitar estouro de tamanho de query
+    batch_size = 500
+    total_rows = len(df_final)
+    
+    for i in range(0, total_rows, batch_size):
+        batch_df = df_final.iloc[i:i + batch_size]
+        values_list = []
+        
+        for _, row in batch_df.iterrows():
+            # Tratamento seguro de strings para evitar quebras de SQL
+            id_p = str(row["id_produto"]) if pd.notnull(row["id_produto"]) else ""
+            nome = str(row["nome_produto"]).replace("'", "\\'") if pd.notnull(row["nome_produto"]) else ""
+            img = str(row["imagem_url"]).replace("'", "\\'") if pd.notnull(row["imagem_url"]) else ""
+            url = str(row["url_produto"]).replace("'", "\\'") if pd.notnull(row["url_produto"]) else ""
+            cat = str(row["categoria"]).replace("'", "\\'") if pd.notnull(row["categoria"]) else ""
+            subcat = str(row["subcategoria"]).replace("'", "\\'") if pd.notnull(row["subcategoria"]) else ""
+            c_at = str(row["created_at"])
+            
+            val_str = f"('{id_p}', '{nome}', '{img}', '{url}', NULL, '{cat}', '{subcat}', TIMESTAMP('{c_at}'))"
+            values_list.append(val_str)
+            
+        if values_list:
+            insert_sql = f"""
+                INSERT INTO `{table_id}` 
+                (id_produto, nome_produto, imagem_url, url_produto, descricao, categoria, subcategoria, created_at)
+                VALUES {', '.join(values_list)};
+            """
+            client.query(insert_sql).result()
 
-    job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
-    job.result()
-
-    print(f"✅ Sucesso! {len(df_final)} produtos atualizados na tabela `{TABELA_SILVER}` do BigQuery.")
-
+    print(f"✅ Sucesso! {total_rows} produtos inseridos na tabela `{TABELA_SILVER}` via SQL.")
     # =========================
     # 6. SINCRONIZAÇÃO COM O SUPABASE
     # =========================
