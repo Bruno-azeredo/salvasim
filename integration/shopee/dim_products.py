@@ -96,12 +96,16 @@ def run():
     print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
     
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
-    job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")
+    
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_TRUNCATE"
+    )
 
     job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
     job.result()
-    print(f"✅ Sucesso! {len(df_final)} produtos atualizados no BigQuery.")
 
+    print(f"✅ Sucesso! {len(df_final)} produtos atualizados na tabela `{TABELA_SILVER}` do BigQuery.")
+    
     # =========================
     # 6. SINCRONIZAÇÃO COM O SUPABASE
     # =========================
