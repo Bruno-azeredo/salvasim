@@ -29,6 +29,7 @@ def run():
     # 2. Query SQL para calcular as faixas de histórico diretamente no BigQuery
     # - Até 30 dias: Mantém o dia exato (frequência diária)
     # - De 30 a 120 dias: Agrupa por faixas (30, 45, 60, 75, 90, 105, 120) tirando a média do período
+ # 2. Query SQL corrigida para lidar com o histórico diário vs faixas agrupadas
     query_consolidacao = f"""
         WITH historico_com_idade AS (
             SELECT 
@@ -41,16 +42,28 @@ def run():
             FROM `{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}`
             WHERE data_extracao IS NOT NULL
         ),
-        dados_tratados AS (
+        -- 1. Parte recente (<= 30 dias): Mantém a granularidade diária exata
+        recente AS (
             SELECT 
                 id_produto,
                 url_produto,
-                preco,
-                preco_antigo,
+                ROUND(AVG(preco), 2) AS preco,
+                ROUND(AVG(preco_antigo), 2) AS preco_antigo,
                 data_extracao,
-                dias_atras,
+                0 AS faixa_dias
+            FROM historico_com_idade
+            WHERE dias_atras <= 30
+            GROUP BY id_produto, url_produto, data_extracao
+        ),
+        -- 2. Parte antiga (> 30 e <= 120 dias): Agrupa pelas faixas maiores
+        antigo AS (
+            SELECT 
+                id_produto,
+                url_produto,
+                ROUND(AVG(preco), 2) AS preco,
+                ROUND(AVG(preco_antigo), 2) AS preco_antigo,
+                MAX(data_extracao) AS data_extracao,
                 CASE 
-                    WHEN dias_atras <= 30 THEN 0 -- 0 indica granularidade diária (últimos 30 dias)
                     WHEN dias_atras <= 45 THEN 45
                     WHEN dias_atras <= 60 THEN 60
                     WHEN dias_atras <= 75 THEN 75
@@ -59,18 +72,12 @@ def run():
                     ELSE 120
                 END AS faixa_dias
             FROM historico_com_idade
-            WHERE dias_atras <= 120 -- Retém até 120 dias no total
+            WHERE dias_atras > 30 AND dias_atras <= 120
+            GROUP BY id_produto, url_produto, faixa_dias
         )
-        -- Se for <= 30 dias (faixa 0), mantemos o registro diário original
-        SELECT 
-            id_produto,
-            url_produto,
-            ROUND(AVG(preco), 2) AS preco,
-            ROUND(AVG(preco_antigo), 2) AS preco_antigo,
-            MAX(data_extracao) AS data_extracao,
-            FAIXA_DIAS
-        FROM dados_tratados
-        GROUP BY id_produto, url_produto, data_extracao, faixa_dias
+        SELECT * FROM recente
+        UNION ALL
+        SELECT * FROM antigo
     """
 
     print("⚙️ Executando agregação e consolidação no BigQuery...")
