@@ -63,7 +63,15 @@ def run():
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # 3. Trata dados para o formato aceito pelo JSON/Supabase
+    # 🧹 3. Limpa completamente a tabela de ofertas antigas antes de carregar as novas do dia
+    try:
+        # O Supabase exige um filtro no delete; usamos uma condição que seja sempre verdadeira para apagar tudo
+        supabase.table("ofertas_dia").delete().neq("id_produto", "EXCLUIR_TUDO_INEXISTENTE").execute()
+        print("🗑️ Tabela `ofertas_dia` limpa com sucesso no Supabase.")
+    except Exception as e:
+        print(f"⚠️ Aviso ao tentar limpar a tabela ofertas_dia (pode estar vazia): {e}")
+
+    # 4. Trata dados para o formato aceito pelo JSON/Supabase
     df = df.where(pd.notnull(df), None)
     
     registros = []
@@ -78,12 +86,12 @@ def run():
                 clean_reg[k] = v
         registros.append(clean_reg)
 
-    # 4. Usa UPSERT para atualizar se já existir ou inserir se for novo (evita erro de primary key)
+    # 5. Insere as novas ofertas do dia na tabela limpa
     try:
-        response = supabase.table("ofertas_dia").upsert(registros).execute()
-        print("✅ Tabela `ofertas_dia` atualizada com sucesso no Supabase!")
+        response = supabase.table("ofertas_dia").insert(registros).execute()
+        print("✅ Tabela `ofertas_dia` recriada e atualizada com sucesso no Supabase!")
     except Exception as e:
-        print(f"❌ Erro ao enviar para o Supabase via upsert: {e}")
+        print(f"❌ Erro ao inserir novas ofertas no Supabase: {e}")
         raise e
 
 if __name__ == "__main__":
