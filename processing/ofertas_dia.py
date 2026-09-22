@@ -53,20 +53,14 @@ def run():
 
     print(f"📊 {len(df)} ofertas encontradas. Sincronizando com o Supabase...")
 
-    # 2. Conectar ao Supabase (usando a chave de serviço para evitar bloqueios de RLS)
+    # 2. Conectar ao Supabase
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("❌ Erro: As variáveis de ambiente do Supabase não estão configuradas.")
         return
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # 3. Limpa a tabela de ofertas do dia anterior para atualizar com o ranking fresco
-    try:
-        supabase.table("ofertas_dia").delete().neq("id_produto", "0").execute()
-    except Exception as e:
-        print(f"ℹ️ Nota ao limpar tabela antiga (pode ser ignorado se estiver vazia): {e}")
-
-    # 4. Trata dados e insere as novas ofertas do dia
+    # 3. Trata dados para o formato aceito pelo JSON/Supabase
     df = df.where(pd.notnull(df), None)
     
     registros = []
@@ -81,9 +75,13 @@ def run():
                 clean_reg[k] = v
         registros.append(clean_reg)
 
-    response = supabase.table("ofertas_dia").insert(registros).execute()
-
-    print("✅ Tabela `ofertas_dia` atualizada com sucesso no Supabase!")
+    # 4. Usa UPSERT para atualizar se já existir ou inserir se for novo (evita erro de primary key)
+    try:
+        response = supabase.table("ofertas_dia").upsert(registros).execute()
+        print("✅ Tabela `ofertas_dia` atualizada com sucesso no Supabase!")
+    except Exception as e:
+        print(f"❌ Erro ao enviar para o Supabase via upsert: {e}")
+        raise e
 
 if __name__ == "__main__":
     run()
