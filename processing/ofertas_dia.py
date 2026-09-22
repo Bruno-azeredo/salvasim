@@ -42,7 +42,7 @@ def run():
           AND preco_anterior IS NOT NULL 
           AND preco_atual < preco_anterior
         ORDER BY percentual_desconto DESC
-        LIMIT 100;
+        LIMIT 200;
     """
 
     df = client_bq.query(query).to_dataframe()
