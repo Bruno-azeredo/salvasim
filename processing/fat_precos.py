@@ -78,17 +78,35 @@ def run():
     # Remove nulos críticos
     df_fato = df_fato.dropna(subset=["id_produto", "preco"])
 
+    # 🛑 EVITA DUPLICIDADE: Remove duplicatas no DataFrame do mesmo dia por id_produto
+    df_fato["data_dia"] = df_fato["data_extracao"].dt.date
+    df_fato = df_fato.drop_duplicates(subset=["id_produto", "data_dia"], keep="first")
+    df_fato = df_fato.drop(columns=["data_dia"])
+
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
+    # 🧹 Limpeza preventiva: remove registros anteriores do mesmo dia no BigQuery antes do Append
+    if not df_fato.empty:
+        data_execucao = df_fato["data_extracao"].dt.date.iloc[0]
+        delete_query = f"""
+            DELETE FROM `{table_id}`
+            WHERE DATE(data_extracao) = '{data_execucao}'
+        """
+        try:
+            client.query(delete_query).result()
+            print(f"🧹 Registros anteriores da data {data_execucao} limpos no BigQuery.")
+        except Exception:
+            pass # Ignora se a tabela ainda não existir na primeira carga
+
     job_config = bigquery.LoadJobConfig(
         write_disposition="WRITE_APPEND"
     )
 
-    print(f"☁️ Enviando {len(df_fato)} registros para a tabela Fato no BigQuery...")
+    print(f"☁️ Enviando {len(df_fato)} registros únicos para a tabela Fato no BigQuery...")
     job = client.load_table_from_dataframe(df_fato, table_id, job_config=job_config)
     job.result()
 
-    print(f"✅ Fato de preços atualizada com sucesso no BigQuery!")
+    print(f"✅ Fato de preços atualizada com sucesso no BigQuery sem duplicatas!")
 
 if __name__ == "__main__":
     run()
