@@ -86,13 +86,13 @@ def run():
     
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
+    # Configuração de carga para o BigQuery
     job_config = bigquery.LoadJobConfig(
-        write_disposition="WRITE_TRUNCATE", # Substitui os dados mantendo o catálogo sempre limpo
-        schema_update_options=[
-            bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION
-        ]
+        write_disposition="WRITE_TRUNCATE" # Sobrescreve a tabela com os produtos atualizados
+        # REMOVA A LINHA DE schema_update_options DAQUI SE ELA ESTIVER PRESENTE
     )
 
+    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
     job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
     job.result()
 

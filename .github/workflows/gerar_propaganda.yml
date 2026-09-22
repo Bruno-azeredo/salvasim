@@ -31,7 +31,7 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
           
           # Executa o script de envio para o Supabase
-          python -u processing/prod_supabase.py
+          python -u processing/dim_prod.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
