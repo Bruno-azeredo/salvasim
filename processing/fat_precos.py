@@ -40,9 +40,25 @@ def run():
 
     client = bigquery.Client(project=PROJECT_ID)
     
-    # Lê os dados da Bronze
-    query_bronze = f"SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_atacadao`"
+    # 🔍 Lê apenas os dados do dia atual da Bronze para evitar reprocessar o histórico antigo
+    query_bronze = f"""
+        SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_atacadao`
+        WHERE DATE(data_extracao) = CURRENT_DATE()
+    """
     df = client.query(query_bronze).to_dataframe()
+
+    # Caso a extração de hoje ainda não tenha dados ou a data venha em formato diferente, 
+    # podemos pegar a última data disponível na Bronze como fallback:
+    if df.empty:
+        print("⚠️ Nenhum registro encontrado para hoje na Bronze. Buscando a data mais recente disponível...")
+        query_fallback = f"""
+            SELECT * FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_atacadao`
+            WHERE DATE(data_extracao) = (
+                SELECT MAX(DATE(data_extracao)) 
+                FROM `{PROJECT_ID}.{DATASET_BRONZE}.produtos_atacadao`
+            )
+        """
+        df = client.query(query_fallback).to_dataframe()
 
     if df.empty:
         print("❌ Nenhum registro encontrado na Bronze.")
@@ -102,7 +118,7 @@ def run():
         write_disposition="WRITE_APPEND"
     )
 
-    print(f"☁️ Enviando {len(df_fato)} registros únicos para a tabela Fato no BigQuery...")
+    print(f"☁️ Enviando {len(df_fato)} registros únicos do dia para a tabela Fato no BigQuery...")
     job = client.load_table_from_dataframe(df_fato, table_id, job_config=job_config)
     job.result()
 
