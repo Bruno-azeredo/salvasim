@@ -26,7 +26,12 @@ def run():
     # Tratamentos básicos
     df["data_extracao"] = pd.to_datetime(df["data_extracao"])
     df["preco"] = pd.to_numeric(df["preco"], errors="coerce").fillna(0.0)
-    df["preco_antigo"] = pd.to_numeric(df["preco_antigo"], errors="coerce")
+    
+    # Tratamento seguro para 'preco_antigo' caso ela não exista no DataFrame da Bronze
+    if "preco_antigo" in df.columns:
+        df["preco_antigo"] = pd.to_numeric(df["preco_antigo"], errors="coerce")
+    else:
+        df["preco_antigo"] = None
     
     # Importa a função de gerar ID para manter a mesma regra da dimensão
     import hashlib
