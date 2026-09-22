@@ -51,7 +51,10 @@ def run():
         print("⚠️ Nenhuma oferta de destaque encontrada hoje.")
         return
 
-    print(f"📊 {len(df)} ofertas encontradas. Sincronizando com o Supabase...")
+    # 🛑 Garante que não existem id_produtos duplicados no mesmo lote de envio
+    df = df.drop_duplicates(subset=["id_produto"], keep="first")
+
+    print(f"📊 {len(df)} ofertas únicas encontradas. Sincronizando com o Supabase...")
 
     # 2. Conectar ao Supabase
     if not SUPABASE_URL or not SUPABASE_KEY:
