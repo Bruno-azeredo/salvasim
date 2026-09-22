@@ -12,14 +12,19 @@ DATASET_SILVER = "silver"
 TABELA_SILVER = "s_fat_precos"
 
 def limpar_preco(valor):
-    """Remove símbolos de moeda, trata pontos de milhar e converte vírgula decimal."""
     if pd.isna(valor):
         return 0.0
+    
+    # Se já for numérico, retorna direto
     if isinstance(valor, (int, float)):
         return float(valor)
     
     val_str = str(valor).strip()
-    # Remove "R$", espaços, pontos de milhar e troca vírgula por ponto
+    # Se vier vazio ou string "None"/"nan"
+    if not val_str or val_str.lower() in ["none", "nan", "null"]:
+        return 0.0
+        
+    # Remove "R$", espaços, pontos de milhar e troca vírgula decimal por ponto
     val_str = val_str.replace("R$", "").replace("r$", "").strip()
     val_str = val_str.replace(".", "").replace(",", ".")
     
@@ -46,11 +51,17 @@ def run():
         print("❌ Nenhum registro encontrado na Bronze.")
         return
 
+    # 🔍 PRINT DE INSPEÇÃO: Mostra as primeiras colunas e os preços brutos vindos da Bronze
+    print("🔎 Amostra de preços brutos vindos da Bronze:")
+    if "preco" in df.columns:
+        print(df["preco"].head(5))
+    else:
+        print("⚠️ ATENÇÃO: A coluna 'preco' NÃO foi encontrada na tabela da Bronze! As colunas disponíveis são:", df.columns.tolist())
+
     # Tratamentos básicos e limpeza de preço
     df["data_extracao"] = pd.to_datetime(df["data_extracao"])
     df["preco"] = df["preco"].apply(limpar_preco)
     
-    # Tratamento seguro para 'preco_antigo' caso ela exista no DataFrame da Bronze
     if "preco_antigo" in df.columns:
         df["preco_antigo"] = df["preco_antigo"].apply(limpar_preco)
     else:
@@ -64,18 +75,19 @@ def run():
     df_fato["disponivel"] = df.get("disponivel", True)
     df_fato["data_extracao"] = df["data_extracao"]
 
-    # Remove nulos críticos onde o preço zerou ou o ID é inválido
+    # Remove nulos críticos ou preços zerados
     df_fato = df_fato.dropna(subset=["id_produto", "preco"])
-    df_fato = df_fato[df_fato["preco"] > 0.0]
+    
+    # IMPORTANTE: Se quiser ver se os preços limpos estão maiores que zero, comente temporariamente a linha abaixo se necessário para inspecionar
+    # df_fato = df_fato[df_fato["preco"] > 0.0]
 
-    # Envio para o BigQuery (Append acumulando o histórico)
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     
     job_config = bigquery.LoadJobConfig(
         write_disposition="WRITE_APPEND"
     )
 
-    print(f"☁️ Enviando {len(df_fato)} registros limpos para a tabela Fato no BigQuery...")
+    print(f"☁️ Enviando {len(df_fato)} registros para a tabela Fato no BigQuery...")
     job = client.load_table_from_dataframe(df_fato, table_id, job_config=job_config)
     job.result()
 
