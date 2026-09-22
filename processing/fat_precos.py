@@ -14,13 +14,10 @@ TABELA_SILVER = "s_fat_precos"
 def limpar_preco(valor):
     if pd.isna(valor):
         return 0.0
-    
-    # Se já for numérico, retorna direto
     if isinstance(valor, (int, float)):
         return float(valor)
     
     val_str = str(valor).strip()
-    # Se vier vazio ou string "None"/"nan"
     if not val_str or val_str.lower() in ["none", "nan", "null"]:
         return 0.0
         
@@ -51,12 +48,15 @@ def run():
         print("❌ Nenhum registro encontrado na Bronze.")
         return
 
-    # 🔍 PRINT DE INSPEÇÃO: Mostra as primeiras colunas e os preços brutos vindos da Bronze
-    print("🔎 Amostra de preços brutos vindos da Bronze:")
+    # 🔍 DIAGNÓSTICO DETALHADO NO LOG
+    print("🔎 Colunas disponíveis na Bronze:", df.columns.tolist())
     if "preco" in df.columns:
-        print(df["preco"].head(5))
+        print("🔎 Amostra dos 5 primeiros valores brutos da coluna 'preco':")
+        for idx, val in enumerate(df["preco"].head(5)):
+            print(f"   [{idx}] Tipo: {type(val)} | Valor Bruto: repr({repr(val)}) | Limpo: {limpar_preco(val)}")
     else:
-        print("⚠️ ATENÇÃO: A coluna 'preco' NÃO foi encontrada na tabela da Bronze! As colunas disponíveis são:", df.columns.tolist())
+        print("❌ ERRO CRÍTICO: A coluna 'preco' NÃO existe na tabela da Bronze!")
+        return
 
     # Tratamentos básicos e limpeza de preço
     df["data_extracao"] = pd.to_datetime(df["data_extracao"])
@@ -75,11 +75,8 @@ def run():
     df_fato["disponivel"] = df.get("disponivel", True)
     df_fato["data_extracao"] = df["data_extracao"]
 
-    # Remove nulos críticos ou preços zerados
+    # Remove nulos críticos
     df_fato = df_fato.dropna(subset=["id_produto", "preco"])
-    
-    # IMPORTANTE: Se quiser ver se os preços limpos estão maiores que zero, comente temporariamente a linha abaixo se necessário para inspecionar
-    # df_fato = df_fato[df_fato["preco"] > 0.0]
 
     table_id = f"{PROJECT_ID}.{DATASET_SILVER}.{TABELA_SILVER}"
     

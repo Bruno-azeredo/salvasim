@@ -23,20 +23,6 @@ jobs:
           pip install -r requirements.txt
           
 
-
-      - name: 4. Sincronizar com o Supabase
-        run: |
-          # Cria o arquivo de credenciais para este passo
-          echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
-          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
-          
-          # Executa o script de envio para o Supabase
-          python -u processing/prod_supabase.py
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-
       - name: 5. Processar Fato Preços (Gold)
         run: |
           echo "$GOOGLE_APPLICATION_CREDENTIALS_DATA" > gcp_key.json
