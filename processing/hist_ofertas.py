@@ -5,7 +5,8 @@ from supabase import create_client
 
 # Configuração dos Clientes (BigQuery e Supabase)
 # Certifica-te de que tens a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS configurada para o BigQuery
-bq_client = bigquery.Client()
+PROJECT_ID = "economiza-itap"
+client_bq = bigquery.Client(project=PROJECT_ID)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
