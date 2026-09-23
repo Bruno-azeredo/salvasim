@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pandas as pd
 from google.cloud import bigquery
 from supabase import create_client
@@ -47,6 +48,9 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     print(f"3. A preparar {len(gold_df)} registos vindos do BigQuery...")
     
+    # Substitui NaN e infinitos por None (compatível com JSON do Supabase)
+    gold_df = gold_df.replace({np.nan: None, float('inf'): None, float('-inf'): None})
+
     # Converte o DataFrame da Gold diretamente para formato dicionário
     dados_para_enviar = gold_df.to_dict(orient="records")
 
