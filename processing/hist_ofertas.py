@@ -31,13 +31,10 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     print("2. A consultar a tabela histórica no BigQuery filtrando apenas pelos IDs necessários...")
     
+    # Selecionamos apenas o que existe garantidamente na tabela do BigQuery (ex: id_produto e métricas históricas se precisares)
     query = f"""
         SELECT 
-            id_produto,
-            nome_produto,
-            imagem_url,
-            categoria,
-            url_produto
+            id_produto
         FROM `{PROJECT_ID}.{DATASET_ID}.g_historico_precos_consolidado`
         WHERE id_produto IN ({ids_formatados})
     """
