@@ -32,7 +32,6 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     print("2. A consultar todos os dados da tabela histórica no BigQuery filtrando pelos IDs...")
     
-    # Trazemos todas as colunas da tabela Gold do BigQuery para os produtos filtrados
     query = f"""
         SELECT *
         FROM `{PROJECT_ID}.{DATASET_ID}.g_historico_precos_consolidado`
@@ -48,6 +47,10 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     print(f"3. A preparar {len(gold_df)} registos vindos do BigQuery...")
     
+    # Converte colunas de data/timestamp para string (evita erro de serialização JSON)
+    for col in gold_df.select_dtypes(include=['datetime64[ns]', 'datetime64', 'datetimetz']).columns:
+        gold_df[col] = gold_df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+
     # Substitui NaN e infinitos por None (compatível com JSON do Supabase)
     gold_df = gold_df.replace({np.nan: None, float('inf'): None, float('-inf'): None})
 
@@ -56,8 +59,12 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     print(f"4. A atualizar a tabela 'historico_ofertas' no Supabase...")
     
-    # Envia os dados consolidados da Gold para a tabela final no Supabase
-    supabase.table("historico_ofertas").upsert(dados_para_enviar).execute()
+    # Como o volume pode ser alto (5774 registos), é seguro fazer por lotes se necessário, mas o upsert direto costuma aceitar bem. 
+    # Caso queiras enviar em chunks para evitar limites de payload:
+    chunk_size = 1000
+    for i in range(0, len(dados_para_enviar), chunk_size):
+        chunk = dados_para_enviar[i:i + chunk_size]
+        supabase.table("historico_ofertas").upsert(chunk).execute()
     
     print("Sincronização BigQuery -> Supabase concluída com sucesso!")
 
