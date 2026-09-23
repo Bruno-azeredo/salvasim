@@ -14,8 +14,8 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def consolidar_ofertas_bigquery_para_supabase():
-    print("1. A buscar os IDs de ofertas_dia no Supabase...")
-    res_ofertas = supabase.table("ofertas_dia").select("*").execute()
+    print("1. A buscar os IDs de ofertas_dia no Supabase (apenas para filtro)...")
+    res_ofertas = supabase.table("ofertas_dia").select("id_produto").execute()
     ofertas_df = pd.DataFrame(res_ofertas.data)
 
     if ofertas_df.empty:
@@ -24,17 +24,16 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     # Extrair os IDs únicos de produtos em oferta
     ids_ofertas = ofertas_df["id_produto"].dropna().unique().tolist()
-    print(f"Total de produtos em oferta detetados: {len(ids_ofertas)}")
+    print(f"Total de produtos em oferta detetados para filtro: {len(ids_ofertas)}")
 
     # Formatar os IDs para a query SQL do BigQuery
     ids_formatados = ", ".join([f"'{i}'" for i in ids_ofertas])
 
-    print("2. A consultar a tabela histórica no BigQuery filtrando apenas pelos IDs necessários...")
+    print("2. A consultar todos os dados da tabela histórica no BigQuery filtrando pelos IDs...")
     
-    # Selecionamos apenas o que existe garantidamente na tabela do BigQuery (ex: id_produto e métricas históricas se precisares)
+    # Trazemos todas as colunas da tabela Gold do BigQuery para os produtos filtrados
     query = f"""
-        SELECT 
-            id_produto
+        SELECT *
         FROM `{PROJECT_ID}.{DATASET_ID}.g_historico_precos_consolidado`
         WHERE id_produto IN ({ids_formatados})
     """
@@ -46,16 +45,15 @@ def consolidar_ofertas_bigquery_para_supabase():
         print("Nenhum registo correspondente encontrado na tabela do BigQuery.")
         return
 
-    print("3. A cruzar dados das ofertas com o histórico do BigQuery...")
-    consolidado_df = pd.merge(ofertas_df, gold_df, on="id_produto", how="inner")
-
-    # Prepara os dados para formato dicionário
-    dados_para_enviar = consolidado_df.to_dict(orient="records")
-
-    print(f"4. A atualizar a tabela 'vitrine_ofertas' no Supabase com {len(dados_para_enviar)} registos...")
+    print(f"3. A preparar {len(gold_df)} registos vindos do BigQuery...")
     
-    # Envia os dados consolidados para a tabela final no Supabase
-    supabase.table("vitrine_ofertas").upsert(dados_para_enviar).execute()
+    # Converte o DataFrame da Gold diretamente para formato dicionário
+    dados_para_enviar = gold_df.to_dict(orient="records")
+
+    print(f"4. A atualizar a tabela 'historico_ofertas' no Supabase...")
+    
+    # Envia os dados consolidados da Gold para a tabela final no Supabase
+    supabase.table("historico_ofertas").upsert(dados_para_enviar).execute()
     
     print("Sincronização BigQuery -> Supabase concluída com sucesso!")
 
