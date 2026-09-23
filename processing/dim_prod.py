@@ -31,6 +31,54 @@ def gerar_id(link):
         return None
     return hashlib.md5(link.encode()).hexdigest()
 
+def identificar_cesta_basica(nome):
+    if not isinstance(nome, str):
+        return False
+    
+    n = nome.lower()
+    
+    # Leite Longa Vida 1L Integral (exceto Zero)
+    if 'leite' in n and '1l' in n and 'integral' in n and 'zero' not in n:
+        return True
+    
+    # Arroz 5kg
+    if 'arroz' in n and '5kg' in n:
+        return True
+        
+    # Feijão 1kg Carioca
+    if 'feijão' in n and '1kg' in n and 'carioca' in n:
+        return True
+        
+    # Açúcar 1kg Refinado
+    if 'açúcar' in n and '1kg' in n and 'refinado' in n:
+        return True
+        
+    # Café 500g
+    if 'café' in n and '500g' in n:
+        return True
+        
+    # Óleo 900ml Soja
+    if 'óleo' in n and '900' in n and 'soja' in n:
+        return True
+        
+    # Macarrão 500g Espaguete
+    if 'macarrão' in n and '500' in n and 'espaguete' in n:
+        return True
+        
+    # Farinha de Trigo 1kg Tipo 1
+    if 'farinha de trigo' in n and '1kg' in n and 'tipo 1' in n:
+        return True
+        
+    # Fubá 500g
+    if 'fubá' in n and '500' in n:
+        return True
+        
+    # Sal 1kg Refinado
+    if 'sal' in n and '1kg' in n and 'refinado' in n:
+        return True
+        
+    return False
+
 # =========================
 # PIPELINE PRINCIPAL
 # =========================
@@ -76,6 +124,11 @@ def run():
     
     df_final["categoria"] = df_recente.get("categoria", "")
     df_final["subcategoria"] = df_recente.get("subcategoria", "")
+    
+    # Aplicação da regra de Cesta Básica
+    print("🛒 Classificando produtos de Cesta Básica...")
+    df_final["is_cesta_basica"] = df_recente["nome"].apply(identificar_cesta_basica)
+
     df_final["created_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Garantir unicidade pelo ID gerado
@@ -89,10 +142,8 @@ def run():
     # Configuração de carga para o BigQuery
     job_config = bigquery.LoadJobConfig(
         write_disposition="WRITE_TRUNCATE" # Sobrescreve a tabela com os produtos atualizados
-        # REMOVA A LINHA DE schema_update_options DAQUI SE ELA ESTIVER PRESENTE
     )
 
-    print(f"☁️ Enviando dimensão tratada para a tabela `{DATASET_SILVER}.{TABELA_SILVER}` no BigQuery...")
     job = client.load_table_from_dataframe(df_final, table_id, job_config=job_config)
     job.result()
 
