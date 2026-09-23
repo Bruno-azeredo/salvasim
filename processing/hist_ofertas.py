@@ -4,8 +4,9 @@ from google.cloud import bigquery
 from supabase import create_client
 
 # Configuração dos Clientes (BigQuery e Supabase)
-# Certifica-te de que tens a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS configurada para o BigQuery
 PROJECT_ID = "economiza-itap"
+DATASET_ID = "gold"
+
 client_bq = bigquery.Client(project=PROJECT_ID)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -25,12 +26,11 @@ def consolidar_ofertas_bigquery_para_supabase():
     ids_ofertas = ofertas_df["id_produto"].dropna().unique().tolist()
     print(f"Total de produtos em oferta detetados: {len(ids_ofertas)}")
 
-    # Formatar os IDs para a query SQL do BigQuery (transformando em string separada por vírgulas)
-    # Se os IDs no BigQuery forem string, envolvemo-los em aspas
+    # Formatar os IDs para a query SQL do BigQuery
     ids_formatados = ", ".join([f"'{i}'" for i in ids_ofertas])
 
     print("2. A consultar a tabela histórica no BigQuery filtrando apenas pelos IDs necessários...")
-    # Consulta otimizada ao BigQuery para trazer apenas o histórico dos produtos que estão em oferta hoje
+    
     query = f"""
         SELECT 
             id_produto,
@@ -38,7 +38,7 @@ def consolidar_ofertas_bigquery_para_supabase():
             imagem_url,
             categoria,
             url_produto
-        FROM `teu-projeto.teu_dataset.g_historico_precos_consolidado`
+        FROM `{PROJECT_ID}.{DATASET_ID}.g_historico_precos_consolidado`
         WHERE id_produto IN ({ids_formatados})
     """
     
@@ -50,7 +50,6 @@ def consolidar_ofertas_bigquery_para_supabase():
         return
 
     print("3. A cruzar dados das ofertas com o histórico do BigQuery...")
-    # Faz o merge entre as ofertas do dia (preços atuais/descontos) e os dados cadastrais/históricos do BigQuery
     consolidado_df = pd.merge(ofertas_df, gold_df, on="id_produto", how="inner")
 
     # Prepara os dados para formato dicionário
@@ -58,7 +57,7 @@ def consolidar_ofertas_bigquery_para_supabase():
 
     print(f"4. A atualizar a tabela 'vitrine_ofertas' no Supabase com {len(dados_para_enviar)} registos...")
     
-    # Envia os dados consolidados para uma tabela final no Supabase (ex: 'vitrine_ofertas')
+    # Envia os dados consolidados para a tabela final no Supabase
     supabase.table("vitrine_ofertas").upsert(dados_para_enviar).execute()
     
     print("Sincronização BigQuery -> Supabase concluída com sucesso!")
