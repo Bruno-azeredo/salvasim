@@ -43,7 +43,7 @@ def consolidar_ofertas_bigquery_para_supabase():
     """
     
     # Executa a query no BigQuery e converte para DataFrame do Pandas
-    gold_df = bq_client.query(query).to_dataframe()
+    gold_df = client_bq.query(query).to_dataframe()
 
     if gold_df.empty:
         print("Nenhum registo correspondente encontrado na tabela do BigQuery.")
