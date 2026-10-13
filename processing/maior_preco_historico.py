@@ -56,7 +56,7 @@ def run():
         JOIN maior_preco_historico m ON r.id_produto = m.id_produto
         WHERE m.maior_preco_registrado > r.preco_atual  -- Traz apenas produtos que estão abaixo do seu pico histórico
         ORDER BY percentual_desconto_historico DESC
-        LIMIT 200;
+        LIMIT 500;
     """
 
     df = client_bq.query(query).to_dataframe()
