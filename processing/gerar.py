@@ -20,22 +20,7 @@ def gerar_assinatura(path):
     sign = hmac.new(PARTNER_KEY.encode("utf-8"), base_string.encode("utf-8"), hashlib.sha256).hexdigest()
     return timestamp, sign
 
-# 1. Passo 1: Mostra o link para você autorizar no navegador
-path = "/api/v2/shop/auth_partner"
-timestamp, sign = gerar_assinatura(path)
-# ATENÇÃO: Substitua 'https://sua-redirect-url.com' pela URL de redirecionamento cadastrada no seu app na Shopee Open Platform
-redirect_url = "https://sua-redirect-url.com" 
-
-url_auth = f"{BASE_URL}{path}?partner_id={PARTNER_ID}&timestamp={timestamp}&sign={sign}&redirect={redirect_url}"
-
-print("\n👉 Abra este link no seu navegador, faça login e autorize a loja:")
-print(url_auth)
-print("\n")
-
-# 2. Passo 2: Cole aqui o código 'code' que veio na URL de redirecionamento
-code = input("Cole o código (code) retornado pela URL da Shopee: ").strip()
-
-# 3. Troca o code pelos tokens definitivos
+code = "516876765950595251537268734e736e"
 token_path = "/api/v2/auth/token/get"
 t_ts, t_sign = gerar_assinatura(token_path)
 
@@ -47,6 +32,7 @@ payload = {
     "shop_id": SHOP_ID
 }
 
+print("🔄 Solicitando token à Shopee...", flush=True)
 r = requests.post(token_url, json=payload)
 data = r.json()
 
@@ -57,11 +43,13 @@ else:
     refresh_token = data["refresh_token"]
     expire_at = time.time() + data["expire_in"] - 60
 
-    # Salva os tokens reais no Supabase na linha id = 1
-    supabase.table("shopee_token").update({
+    # Atualiza ou insere no Supabase na linha id = 1
+    # Certifique-se de que a linha id = 1 existe na sua tabela (conforme orientamos anteriormente)
+    supabase.table("shopee_token").upsert({
+        "id": 1,
         "access_token": access_token,
         "refresh_token": refresh_token,
         "expire_at": expire_at
-    }).eq("id", 1).execute()
+    }).execute()
 
     print("✅ Sucesso! Token gerado e salvo no Supabase com sucesso.")
