@@ -22,6 +22,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: gerar
+        run: |
+          python -u processing/gerar.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
       - name: Executar script de exclusão de produtos
         run: |
           python -u processing/deletar_tudo.py
